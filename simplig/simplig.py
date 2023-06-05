@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, SymLogNorm
 
 from . import ureg
-from pint import Quantity, Unit
-import numpy.typing as npt
+
 from dataclasses import dataclass, asdict
 from typing import Sequence
 from typing import Mapping, Optional, AnyStr
+from textwrap import wrap
 
 
 @dataclass(frozen=True)
@@ -18,18 +18,18 @@ class FieldMetaData:
     # dataclass fields:
     # axes
     axis_labels: Sequence[AnyStr]
-    first_cell_positions: Quantity[npt.ArrayLike]
+    first_cell_positions: ureg.Quantity
     shape: Sequence[int]
-    cell_size: Quantity[npt.ArrayLike]
+    cell_size: ureg.Quantity
     in_cell_position: Sequence[float]
     # field value
-    value_unit: Unit
-    time: Quantity[float]
+    value_unit: ureg.Unit
+    time: ureg.Quantity
     field_description: AnyStr
     value_symbol: AnyStr = ""
     # extra info about slicing and averaging
-    slicing_positions: Optional[Mapping[AnyStr, Quantity[float]]] = None
-    averaging_region:  Optional[Mapping[AnyStr, Quantity[tuple]]] = None
+    slicing_positions: Optional[Mapping[AnyStr, ureg.Quantity]] = None
+    averaging_region:  Optional[Mapping[AnyStr, ureg.Quantity]] = None
 
     def __post_init__(self):
         dim_condition = (len(self.axis_labels)
@@ -62,12 +62,24 @@ class FieldMetaData:
     @property
     def plot_title(self):
         slicing_description = ""
-        for axis, pos in self.slicing_positions.items():
-            if pos is not None:
-                slicing_description += f"at {pos:.3~P} along {axis}"
-        title = f"{self.field_description} @ {self.time :.2~P}"
+        if self.slicing_positions is not None:
+            for axis, pos in self.slicing_positions.items():
+                if pos is not None:
+                    if slicing_description:
+                        slicing_description += " and"
+                    slicing_description += f" at {pos.to_compact():.6g~P} along {axis}"
+        averaging_description = ""
+        if self.averaging_region is not None:
+            for axis, reg in self.averaging_region.items():
+                if reg is not None:
+                    if averaging_description:
+                        averaging_description += " and"
+                    averaging_description += f" from {reg[0].to_compact():.6g~P} to {reg[1].to_compact():.6g~P} along {axis}"
+        title = f"{self.field_description} at {self.time.to_compact() :.6g~P}"
         if slicing_description:
-            title += f"\n sliced {slicing_description}"
+            title += f" sliced{slicing_description}"
+        if averaging_description:
+            title += f" averaged{averaging_description}"
         return title
 
     def get_imshow_extent(self, unit=None):
@@ -76,17 +88,20 @@ class FieldMetaData:
                   self.last_cell_positions[0] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
                   self.first_cell_positions[1] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
                   self.last_cell_positions[1] + (0.5 + self.in_cell_position[0]) * self.cell_size[0]]
+        extent = ureg.Quantity.from_list(extent)
         if unit is not None:
-            extent = [val.to(unit) for val in extent]
+            extent = extent.to(unit)
         else:
-            unit = self.first_cell_positions.units
-        return [val.magnitude for val in extent], unit
+            extent = extent.to(np.max(np.abs(extent)).to_compact().units)
+        return extent.magnitude, extent.units
 
     def get_positions(self, axis, unit=None):
         # assert axis>= 0 and axis < self.ndim
         positions = np.arange(self.shape[axis]) * self.cell_size[axis] + self.first_cell_positions[axis]
         if unit is not None:
             positions = positions.to(unit)
+        else:
+            positions = positions.to(np.max(positions).to_compact().units)
         return positions
 
 
@@ -116,7 +131,13 @@ def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow
     f.colorbar(img, ax=ax, label=fr"{meta_data.value_symbol}" + fr"$\left[{data.units:~L}\right]$")
 
 
-def plot_1d_field(data, meta_data, ax=None, log_scale=False, unit=None, **plot_kwargs):
+def wrap_text(text, length):
+    return "\n".join(wrap(text, length))
+
+
+def plot_1d_field(data, meta_data, ax=None,
+                  log_scale=False, unit=None,
+                  title_fontsize=12, **plot_kwargs):
     assert meta_data.ndim == 1
     if ax is None:
         f, ax = plt.subplots(1)
@@ -132,7 +153,8 @@ def plot_1d_field(data, meta_data, ax=None, log_scale=False, unit=None, **plot_k
     ax.plot(x.magnitude, data, **plot_kwargs)
     ax.set_xlabel(meta_data.axis_labels[0] + f" [{x.units:~P}]")
     ax.set_ylabel(fr"{meta_data.value_symbol}" + f"[{unit:~P}]")
-    ax.set_title(meta_data.plot_title)
+    title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
+    ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
     plt.plot()
 
 
@@ -142,9 +164,8 @@ def plot_field(data, meta_data, ax=None, log_scale=False, unit=None, **plot_func
             quantity = (data * meta_data.value_unit).to(unit)
         else:
             quantity = data * meta_data.value_unit
-        print(f"{meta_data.field_description} @ {meta_data.time:.2~P}"
-              f"at "
-              f" is {quantity:~P}")
+        print(meta_data.plot_title + f" is {quantity:.6g~P}")
+
     elif meta_data.ndim == 1:
         plot_1d_field(data, meta_data, ax, log_scale, unit, **plot_func_kwargs)
     elif meta_data.ndim == 2:
@@ -177,15 +198,15 @@ def unit_dimension_to_pint(unit_dimension):
     # amount of substance N, luminous intensity J)
     base_units = (ureg.metre, ureg.kilogram, ureg.second,
                   ureg.ampere, ureg.kelvin, ureg.mole, ureg.candela)
-    unit = Quantity(1)
+    unit = ureg.Quantity(1)
     for dim, base_unit in zip(unit_dimension, base_units):
         if dim != 0:
             unit *= base_unit ** dim
     return unit.units
 
 
-def slice_index_to_position(index, mr, axis):
-    return (mr.grid_spacing[axis] * index + mr.grid_global_offset[axis]) * mr.grid_unit_SI
+def slice_index_to_position(index, mr, mrc, axis):
+    return (mr.grid_spacing[axis] * (index + mrc.position[axis]) + mr.grid_global_offset[axis]) * mr.grid_unit_SI
 
 
 def get_field(series, iteration, field, component=io.Mesh_Record_Component.SCALAR,
@@ -208,40 +229,60 @@ def get_field(series, iteration, field, component=io.Mesh_Record_Component.SCALA
         slicing = tuple([slice(None)] * mrc.ndim)
     data = mrc[slicing]
     series.flush()
+    shape_before_average = data.shape
     if axes_to_average is not None:
         data = np.squeeze(np.average(data, axis=axes_to_average))
 
     data *= mrc.unit_SI
     if ret_meta:
-        axes_to_pop = []
+        slice_axes = []
         slicing_positions = dict.fromkeys(mr.axis_labels, None)
         for i, sc in enumerate(slicing):
             if type(sc) is int:
-                axes_to_pop.append(i)
+                slice_axes.append(i)
                 slicing_positions[mr.axis_labels[i]] = slice_index_to_position(sc, mr, mrc, i) * ureg.meter
-        if type(axes_to_average) is int:
-            axes_to_average = [axes_to_average, ]
-        if axes_to_average is not None:
-            axes_to_pop = list(set(axes_to_pop + list(axes_to_average)))
 
-        def pop(seq):
-            return np.delete(seq, axes_to_pop)
-
+        axis_labels = mr.axis_labels
         first_cell_positions = [get_first_cell_position(mr, axis, slicing) for axis in range(mrc.ndim)]
         first_cell_positions = np.array(first_cell_positions) * ureg.meter
+        cell_size = np.array(mr.grid_spacing) * mr.grid_unit_SI * ureg.meter
+
+        axis_labels = np.delete(axis_labels, slice_axes)
+        first_cell_positions = np.delete(first_cell_positions, slice_axes)
+        cell_size = np.delete(cell_size, slice_axes)
+        in_cell_position = np.delete(mrc.position, slice_axes)
+
+        averaging_region = None
+        if axes_to_average is not None:
+            averaging_region = {}
+            if type(axes_to_average) is int:
+                axes_to_average = [axes_to_average, ]
+            for axis in axes_to_average:
+                start = first_cell_positions[axis]
+                end = start + shape_before_average[axis] * cell_size[axis]
+                label = axis_labels[axis]
+                averaging_region[label] = ureg.Quantity.from_list([start, end])
+
+            axis_labels = np.delete(axis_labels, axes_to_average)
+            first_cell_positions = np.delete(first_cell_positions, axes_to_average)
+            cell_size = np.delete(cell_size, axes_to_average)
+            in_cell_position = np.delete(in_cell_position, axes_to_average)
+
         component_str = component
         if component == io.Mesh_Record_Component.SCALAR:
             component_str = ""
         time = (iteration * it.dt + mr.time_offset) * it.time_unit_SI
-        meta_data = FieldMetaData(ndim=data.ndim, axis_labels=pop(mr.axis_labels),
-                                  first_cell_positions=pop(first_cell_positions),
+
+        meta_data = FieldMetaData(ndim=data.ndim, axis_labels=axis_labels,
+                                  first_cell_positions=first_cell_positions,
                                   shape=data.shape,
-                                  cell_size=pop(np.array(mr.grid_spacing) * mr.grid_unit_SI) * ureg.meter,
-                                  in_cell_position=pop(mrc.position),
+                                  cell_size=cell_size,
+                                  in_cell_position=in_cell_position,
                                   value_unit=unit_dimension_to_pint(mr.unit_dimension),
                                   field_description=f"{field}{component_str}",
                                   time=time * ureg.second,
-                                  slicing_positions=slicing_positions)
+                                  slicing_positions=slicing_positions,
+                                  averaging_region=averaging_region)
         return data, meta_data
     else:
         return data
@@ -276,7 +317,15 @@ def get_temp(series, iteration, species, slicing=None, axes_to_average=None, ret
                                       slicing=slicing, axes_to_average=axes_to_average, ret_meta=True)
     energy_density, energy_density_meta = get_field(series, iteration, energy_density_field,
                                                     slicing=slicing, axes_to_average=axes_to_average, ret_meta=True)
-    temp = (2 / 3) * energy_density / density * (energy_density_meta.value_unit / density_meta.value_unit)
+    if density_meta.ndim == 0:
+        temp = 0
+        if density > 0:
+            temp = (2 / 3) * energy_density / density
+    else:
+        temp = np.zeros_like(density)
+        mask = density > 0
+        temp[mask] = (2 / 3) * energy_density[mask] / density[mask]
+    temp *= (energy_density_meta.value_unit / density_meta.value_unit)
     temp = temp.to(unit)
     if ret_meta:
         field_description = f'mean kinetic energy of {species}'
