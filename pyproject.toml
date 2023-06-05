@@ -8,9 +8,9 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.9"
 pint = "^0.22"
-numpy
-matplotlib
-openpmd-api
+numpy = "*"
+matplotlib = "*"
+openpmd-api = "*"
 
 [build-system]
 requires = ["poetry-core"]
