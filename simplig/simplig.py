@@ -29,22 +29,26 @@ class FieldMetaData:
     value_symbol: AnyStr = ""
     # extra info about slicing and averaging
     slicing_positions: Optional[Mapping[AnyStr, ureg.Quantity]] = None
-    averaging_region:  Optional[Mapping[AnyStr, ureg.Quantity]] = None
+    averaging_region: Optional[Mapping[AnyStr, ureg.Quantity]] = None
 
     def __post_init__(self):
-        dim_condition = (len(self.axis_labels)
-                         == len(self.first_cell_positions)
-                         == len(self.shape)
-                         == len(self.cell_size)
-                         == len(self.in_cell_position)
-                         == self.ndim)
+        dim_condition = (
+            len(self.axis_labels)
+            == len(self.first_cell_positions)
+            == len(self.shape)
+            == len(self.cell_size)
+            == len(self.in_cell_position)
+            == self.ndim
+        )
         if not dim_condition:
-            raise ValueError(f"axis_labels: len is {len(self.axis_labels)}"
-                             f", first_cell_positions: len is {len(self.first_cell_positions)}"
-                             f", shape: len is {len(self.shape)}"
-                             f", cell_size: len is {len(self.cell_size)}"
-                             f", in_cell_position: len is {len(self.in_cell_position)}"
-                             f" have to have length equal ndim = {self.ndim}")
+            raise ValueError(
+                f"axis_labels: len is {len(self.axis_labels)}"
+                f", first_cell_positions: len is {len(self.first_cell_positions)}"
+                f", shape: len is {len(self.shape)}"
+                f", cell_size: len is {len(self.cell_size)}"
+                f", in_cell_position: len is {len(self.in_cell_position)}"
+                f" have to have length equal ndim = {self.ndim}"
+            )
 
     def get_modified(self, **kwargs):
         dict_repr = asdict(self)
@@ -74,7 +78,10 @@ class FieldMetaData:
                 if reg is not None:
                     if averaging_description:
                         averaging_description += " and"
-                    averaging_description += f" from {reg[0].to_compact():.6g~P} to {reg[1].to_compact():.6g~P} along {axis}"
+                    averaging_description += (
+                        f" from {reg[0].to_compact():.6g~P} "
+                        f"to {reg[1].to_compact():.6g~P} along {axis}"
+                    )
         title = f"{self.field_description} at {self.time.to_compact() :.6g~P}"
         if slicing_description:
             title += f" sliced{slicing_description}"
@@ -84,10 +91,12 @@ class FieldMetaData:
 
     def get_imshow_extent(self, unit=None):
         assert self.ndim == 2, "imshow extent is defined only for 2D datasets"
-        extent = [self.first_cell_positions[0] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
-                  self.last_cell_positions[0] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
-                  self.first_cell_positions[1] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
-                  self.last_cell_positions[1] + (0.5 + self.in_cell_position[0]) * self.cell_size[0]]
+        extent = [
+            self.first_cell_positions[0] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
+            self.last_cell_positions[0] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
+            self.first_cell_positions[1] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
+            self.last_cell_positions[1] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
+        ]
         extent = ureg.Quantity.from_list(extent)
         if unit is not None:
             extent = extent.to(unit)
@@ -97,7 +106,9 @@ class FieldMetaData:
 
     def get_positions(self, axis, unit=None):
         # assert axis>= 0 and axis < self.ndim
-        positions = np.arange(self.shape[axis]) * self.cell_size[axis] + self.first_cell_positions[axis]
+        positions = (
+            np.arange(self.shape[axis]) * self.cell_size[axis] + self.first_cell_positions[axis]
+        )
         if unit is not None:
             positions = positions.to(unit)
         else:
@@ -117,7 +128,7 @@ def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow
             norm = SymLogNorm(1.0)
         else:
             norm = LogNorm()
-    kwargs = {'norm': norm, 'interpolation': 'none'}
+    kwargs = {"norm": norm, "interpolation": "none"}
     kwargs.update(imshow_kwargs)
     data *= meta_data.value_unit
     if unit is not None:
@@ -128,7 +139,7 @@ def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow
     ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit:~P}]")
     ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit:~P}]")
     ax.set_title(meta_data.plot_title)
-    f.colorbar(img, ax=ax, label=fr"{meta_data.value_symbol}" + fr"$\left[{data.units:~L}\right]$")
+    f.colorbar(img, ax=ax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$")
     plt.tight_layout()
     plt.plot()
 
@@ -137,14 +148,12 @@ def wrap_text(text, length):
     return "\n".join(wrap(text, length))
 
 
-def plot_1d_field(data, meta_data, ax=None,
-                  log_scale=False, unit=None,
-                  title_fontsize=12, **plot_kwargs):
+def plot_1d_field(
+    data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, **plot_kwargs
+):
     assert meta_data.ndim == 1
     if ax is None:
-        f, ax = plt.subplots(1)
-    else:
-        f = ax.get_figure()
+        _, ax = plt.subplots(1)
     if log_scale:
         ax.set_yscale("log")
     x = meta_data.get_positions(0)
@@ -154,7 +163,7 @@ def plot_1d_field(data, meta_data, ax=None,
         unit = meta_data.value_unit
     ax.plot(x.magnitude, data, **plot_kwargs)
     ax.set_xlabel(meta_data.axis_labels[0] + f" [{x.units:~P}]")
-    ax.set_ylabel(fr"{meta_data.value_symbol}" + f"[{unit:~P}]")
+    ax.set_ylabel(rf"{meta_data.value_symbol}" + f"[{unit:~P}]")
     title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
     ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
     plt.tight_layout()
@@ -199,31 +208,49 @@ def unit_dimension_to_pint(unit_dimension):
     # powers of the 7 base measures characterizing the record's unit in SI
     # (length L, mass M, time T, electric current I, thermodynamic temperature theta,
     # amount of substance N, luminous intensity J)
-    base_units = (ureg.metre, ureg.kilogram, ureg.second,
-                  ureg.ampere, ureg.kelvin, ureg.mole, ureg.candela)
+    base_units = (
+        ureg.metre,
+        ureg.kilogram,
+        ureg.second,
+        ureg.ampere,
+        ureg.kelvin,
+        ureg.mole,
+        ureg.candela,
+    )
     unit = ureg.Quantity(1)
     for dim, base_unit in zip(unit_dimension, base_units):
         if dim != 0:
-            unit *= base_unit ** dim
+            unit *= base_unit**dim
     return unit.units
 
 
 def slice_index_to_position(index, mr, mrc, axis):
-    return (mr.grid_spacing[axis] * (index + mrc.position[axis]) + mr.grid_global_offset[axis]) * mr.grid_unit_SI
+    return (
+        mr.grid_spacing[axis] * (index + mrc.position[axis]) + mr.grid_global_offset[axis]
+    ) * mr.grid_unit_SI
+
 
 def _get_density_name(species):
-    return species + '_density'
+    return species + "_density"
 
 
 def _get_energy_density_name(species):
-    return species + '_energyDensity'
+    return species + "_energyDensity"
+
 
 class OpenPMDDataLoader:
     def __init__(self, series_path, *args, **kwargs):
         self.series = io.Series(str(series_path), io.Access.read_only, *args, **kwargs)
 
-    def get_field(self, iteration, field, component=io.Mesh_Record_Component.SCALAR,
-                  slicing=None, axes_to_average=None, ret_meta=True):
+    def get_field(
+        self,
+        iteration,
+        field,
+        component=io.Mesh_Record_Component.SCALAR,
+        slicing=None,
+        axes_to_average=None,
+        ret_meta=True,
+    ):
         # verify correct and supported slicing
         if slicing is not None:
             for sc in slicing:
@@ -253,10 +280,14 @@ class OpenPMDDataLoader:
             for i, sc in enumerate(slicing):
                 if type(sc) is int:
                     slice_axes.append(i)
-                    slicing_positions[mr.axis_labels[i]] = slice_index_to_position(sc, mr, mrc, i) * ureg.meter
+                    slicing_positions[mr.axis_labels[i]] = (
+                        slice_index_to_position(sc, mr, mrc, i) * ureg.meter
+                    )
 
             axis_labels = mr.axis_labels
-            first_cell_positions = [get_first_cell_position(mr, axis, slicing) for axis in range(mrc.ndim)]
+            first_cell_positions = [
+                get_first_cell_position(mr, axis, slicing) for axis in range(mrc.ndim)
+            ]
             first_cell_positions = np.array(first_cell_positions) * ureg.meter
             cell_size = np.array(mr.grid_spacing) * mr.grid_unit_SI * ureg.meter
 
@@ -269,7 +300,9 @@ class OpenPMDDataLoader:
             if axes_to_average is not None:
                 averaging_region = {}
                 if type(axes_to_average) is int:
-                    axes_to_average = [axes_to_average, ]
+                    axes_to_average = [
+                        axes_to_average,
+                    ]
                 for axis in axes_to_average:
                     start = first_cell_positions[axis]
                     end = start + shape_before_average[axis] * cell_size[axis]
@@ -286,23 +319,34 @@ class OpenPMDDataLoader:
                 component_str = ""
             time = (iteration * it.dt + mr.time_offset) * it.time_unit_SI
 
-            meta_data = FieldMetaData(ndim=data.ndim, axis_labels=axis_labels,
-                                      first_cell_positions=first_cell_positions,
-                                      shape=data.shape,
-                                      cell_size=cell_size,
-                                      in_cell_position=in_cell_position,
-                                      value_unit=unit_dimension_to_pint(mr.unit_dimension),
-                                      field_description=f"{field}{component_str}",
-                                      time=time * ureg.second,
-                                      slicing_positions=slicing_positions,
-                                      averaging_region=averaging_region)
+            meta_data = FieldMetaData(
+                ndim=data.ndim,
+                axis_labels=axis_labels,
+                first_cell_positions=first_cell_positions,
+                shape=data.shape,
+                cell_size=cell_size,
+                in_cell_position=in_cell_position,
+                value_unit=unit_dimension_to_pint(mr.unit_dimension),
+                field_description=f"{field}{component_str}",
+                time=time * ureg.second,
+                slicing_positions=slicing_positions,
+                averaging_region=averaging_region,
+            )
             return data, meta_data
         else:
             return data
 
-
-    def get_temp(self, iteration, species, slicing=None, axes_to_average=None, ret_meta=True, unit=ureg.eV,
-                 get_density_name=_get_density_name, get_energy_density_name=_get_energy_density_name):
+    def get_temp(
+        self,
+        iteration,
+        species,
+        slicing=None,
+        axes_to_average=None,
+        ret_meta=True,
+        unit=ureg.eV,
+        get_density_name=_get_density_name,
+        get_energy_density_name=_get_energy_density_name,
+    ):
         """
 
         :param series:
@@ -318,11 +362,20 @@ class OpenPMDDataLoader:
         """
         density_field = get_density_name(species)
         energy_density_field = get_energy_density_name(species)
-        density, density_meta = self.get_field(iteration, density_field,
-                                               slicing=slicing, axes_to_average=axes_to_average, ret_meta=True)
-        energy_density, energy_density_meta = self.get_field(iteration, energy_density_field,
-                                                             slicing=slicing, axes_to_average=axes_to_average,
-                                                             ret_meta=True)
+        density, density_meta = self.get_field(
+            iteration,
+            density_field,
+            slicing=slicing,
+            axes_to_average=axes_to_average,
+            ret_meta=True,
+        )
+        energy_density, energy_density_meta = self.get_field(
+            iteration,
+            energy_density_field,
+            slicing=slicing,
+            axes_to_average=axes_to_average,
+            ret_meta=True,
+        )
         if density_meta.ndim == 0:
             temp = 0
             if density > 0:
@@ -331,13 +384,16 @@ class OpenPMDDataLoader:
             temp = np.zeros_like(density)
             mask = density > 0
             temp[mask] = (2 / 3) * energy_density[mask] / density[mask]
-        temp *= (energy_density_meta.value_unit / density_meta.value_unit)
+        temp *= energy_density_meta.value_unit / density_meta.value_unit
         temp = temp.to(unit)
         if ret_meta:
-            field_description = f'mean kinetic energy of {species}'
-            value_symbol = r'$\left<E_\mathrm{kin}\right>$'
+            field_description = f"mean kinetic energy of {species}"
+            value_symbol = r"$\left<E_\mathrm{kin}\right>$"
             value_unit = unit
-            temp_meta = energy_density_meta.get_modified(field_description=field_description,
-                                                         value_symbol=value_symbol, value_unit=value_unit)
+            temp_meta = energy_density_meta.get_modified(
+                field_description=field_description,
+                value_symbol=value_symbol,
+                value_unit=value_unit,
+            )
             return temp.magnitude, temp_meta
         return temp.magnitude
