@@ -141,8 +141,6 @@ def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow
     ax.set_title(meta_data.plot_title)
     f.colorbar(img, ax=ax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$")
     plt.tight_layout()
-    plt.plot()
-
 
 def wrap_text(text, length):
     return "\n".join(wrap(text, length))
@@ -167,7 +165,6 @@ def plot_1d_field(
     title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
     ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
     plt.tight_layout()
-    plt.plot()
 
 
 def plot_field(data, meta_data, ax=None, log_scale=False, unit=None, **plot_func_kwargs):
