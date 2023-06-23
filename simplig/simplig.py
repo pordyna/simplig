@@ -147,7 +147,7 @@ def wrap_text(text, length):
 
 
 def plot_1d_field(
-    data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, **plot_kwargs
+    data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, scatter=False, **plot_kwargs
 ):
     assert meta_data.ndim == 1
     if ax is None:
@@ -159,7 +159,10 @@ def plot_1d_field(
         data = ((data * meta_data.value_unit).to(unit)).magnitude
     else:
         unit = meta_data.value_unit
-    ax.plot(x.magnitude, data, **plot_kwargs)
+    if scatter:
+        ax.scatter(x.magnitude, data, **plot_kwargs)
+    else:
+        ax.plot(x.magnitude, data, **plot_kwargs)
     ax.set_xlabel(meta_data.axis_labels[0] + f" [{x.units:~P}]")
     ax.set_ylabel(rf"{meta_data.value_symbol}" + f"[{unit:~P}]")
     title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
@@ -247,6 +250,7 @@ class OpenPMDDataLoader:
         slicing=None,
         axes_to_average=None,
         ret_meta=True,
+        unit=None
     ):
         # verify correct and supported slicing
         if slicing is not None:
@@ -271,6 +275,12 @@ class OpenPMDDataLoader:
             data = np.squeeze(np.average(data, axis=axes_to_average))
 
         data *= mrc.unit_SI
+        unit_dataset = unit_dimension_to_pint(mr.unit_dimension)
+        if unit is not None:
+            data = data * unit_dataset
+            data = data.to(unit)
+            unit_dataset = data.units
+            data = data.magnitude
         if ret_meta:
             slice_axes = []
             slicing_positions = dict.fromkeys(mr.axis_labels, None)
@@ -323,7 +333,7 @@ class OpenPMDDataLoader:
                 shape=data.shape,
                 cell_size=cell_size,
                 in_cell_position=in_cell_position,
-                value_unit=unit_dimension_to_pint(mr.unit_dimension),
+                value_unit=unit_dataset,
                 field_description=f"{field}{component_str}",
                 time=time * ureg.second,
                 slicing_positions=slicing_positions,
