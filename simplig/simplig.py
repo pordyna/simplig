@@ -92,10 +92,10 @@ class FieldMetaData:
     def get_imshow_extent(self, unit=None):
         assert self.ndim == 2, "imshow extent is defined only for 2D datasets"
         extent = [
+            self.first_cell_positions[1] + (self.in_cell_position[1] - 0.5) * self.cell_size[1],
+            self.last_cell_positions[1] + (0.5 + self.in_cell_position[1]) * self.cell_size[1],
             self.first_cell_positions[0] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
             self.last_cell_positions[0] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
-            self.first_cell_positions[1] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
-            self.last_cell_positions[1] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
         ]
         extent = ureg.Quantity.from_list(extent)
         if unit is not None:
