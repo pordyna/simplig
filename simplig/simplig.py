@@ -264,6 +264,7 @@ class OpenPMDDataLoader:
                         assert sc.step == 1, "No support for striding"
 
         it = self.series.iterations[iteration]
+        it.open()
         mr = it.meshes[field]
         mrc = mr[component]
         if slicing is None:
