@@ -139,7 +139,8 @@ def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow
     ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit:~P}]")
     ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit:~P}]")
     ax.set_title(meta_data.plot_title)
-    f.colorbar(img, ax=ax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$")
+    cax = ax.inset_axes([1.01, 0.0, 0.05, 1])
+    f.colorbar(img, ax=ax, cax=cax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$")
     plt.tight_layout()
 
 def wrap_text(text, length):
@@ -396,7 +397,7 @@ class OpenPMDDataLoader:
         temp = temp.to(unit)
         if ret_meta:
             field_description = f"mean kinetic energy of {species}"
-            value_symbol = r"$\left<E_\mathrm{kin}\right>$"
+            value_symbol = r"$2/3\left<E_\mathrm{kin}\right>$"
             value_unit = unit
             temp_meta = energy_density_meta.get_modified(
                 field_description=field_description,
