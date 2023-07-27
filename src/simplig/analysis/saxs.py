@@ -98,10 +98,11 @@ class SAXSPropagator:
         series_path,
         density_fields,
         sim_write_interval,
-        t_0=0,
+        t_0=0.0 * ureg.second,
         first_avail_iteration=None,
         last_avail_iteration=None,
     ):
+        self.prop_axis_str = None
         self.chunking_axis = None
         self.prop_end = None
         self.prop_start = None
@@ -256,6 +257,7 @@ class SAXSPropagator:
         self._chunk_extent[chunking_axis_idx] = extent
 
     def setup_propagation(self, prop_domain: Domain, start_time, axis, detection_duration):
+        self.prop_axis_str = axis
         self.prop_axis = self._axis_map[axis]
         self._unit_length_int = self._cell_sizes[self.prop_axis]
 
@@ -294,7 +296,7 @@ class SAXSPropagator:
         self._interpolation_coeff = times - times_min
 
         iterations = self._series.iterations
-        self._used_iterations = np.unique(np.concatenate((self._it_min, self._it_max)))
+        self._used_iterations = np.sort(np.unique(np.concatenate((self._it_min, self._it_max))))
         is_in = np.isin(self._used_iterations, iterations)
 
         assert np.all(is_in), f"missing iterations: {np.unique(self._used_iterations[~is_in])}"
@@ -357,6 +359,13 @@ class SAXSPropagator:
         mesh: io.Mesh = it.meshes["integrated_density"]
         mrc: io.Mesh_Record_Component = mesh[io.Mesh_Record_Component.SCALAR]
 
+        t_0 = self.t_0.to("fs")
+        t_start = (self.simulation_step_duration * self._used_iterations[0]).to("fs") - t_0
+        it.set_time(t_start.magnitude)
+        it.set_dt(0.0)
+        it.set_time_unit_SI(1e-15)
+        it.set_attribute("t_0", t_0.magnitude)
+
         global_extent = deepcopy(self._total_extent)
         global_extent.pop(self.prop_axis)
         global_extent.insert(0, self._detection_duration_int_time)
@@ -386,6 +395,16 @@ class SAXSPropagator:
         position.pop(self.prop_axis)
         position.insert(0, 0.0)
 
+        mesh.set_attribute("propagationAxis", self.prop_axis_str)
+        mesh.set_attribute(
+            "propagationDomain",
+            [
+                self.prop_start.to("m").magnitude,
+                self.prop_end.to("m").magnitude
+                + self._cell_sizes[self.prop_axis].to("m").magnitude,
+            ],
+        )
+        mesh.set_attribute("propagationDomainUnitSI", 1.0)
         mesh.set_grid_global_offset(global_offset)
         mesh.set_grid_unit_SI(unit_length)
         mesh.set_grid_spacing(grid_spacing)
