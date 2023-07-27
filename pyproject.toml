@@ -1,20 +1,24 @@
-[tool.poetry]
+[project]
 name = "simplig"
-version = "0.1.0"
+version = "0.0.1"
 description = ""
-authors = ["Paweł Ordyna <p.ordyna@hzdr.de>"]
+authors = [{name = "Paweł Ordyna", email = "p.ordyna@hzdr.de"}]
 readme = "README.md"
 
-[tool.poetry.dependencies]
-python = "^3.9"
-pint = "^0.22"
-numpy = "*"
-matplotlib = "*"
-openpmd-api = "*"
+dependencies=[
+    "pint >= 0.22",
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "openpmd-api>=0.14",
+    "mpi4py",
+    "numba",
+    "tqdm"
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 100

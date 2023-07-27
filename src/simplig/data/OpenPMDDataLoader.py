@@ -1,193 +1,10 @@
 import numpy as np
 import openpmd_api as io
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm, SymLogNorm
-
-from . import ureg
-
-from dataclasses import dataclass, asdict
-from typing import Sequence
-from typing import Mapping, Optional, AnyStr
-from textwrap import wrap
+from .. import ureg
+from ..data import FieldMetaData
 
 
-@dataclass(frozen=True)
-class FieldMetaData:
-    # dimensionality:
-    ndim: int
-    # dataclass fields:
-    # axes
-    axis_labels: Sequence[AnyStr]
-    first_cell_positions: ureg.Quantity
-    shape: Sequence[int]
-    cell_size: ureg.Quantity
-    in_cell_position: Sequence[float]
-    # field value
-    value_unit: ureg.Unit
-    time: ureg.Quantity
-    field_description: AnyStr
-    value_symbol: AnyStr = ""
-    # extra info about slicing and averaging
-    slicing_positions: Optional[Mapping[AnyStr, ureg.Quantity]] = None
-    averaging_region: Optional[Mapping[AnyStr, ureg.Quantity]] = None
-
-    def __post_init__(self):
-        dim_condition = (
-            len(self.axis_labels)
-            == len(self.first_cell_positions)
-            == len(self.shape)
-            == len(self.cell_size)
-            == len(self.in_cell_position)
-            == self.ndim
-        )
-        if not dim_condition:
-            raise ValueError(
-                f"axis_labels: len is {len(self.axis_labels)}"
-                f", first_cell_positions: len is {len(self.first_cell_positions)}"
-                f", shape: len is {len(self.shape)}"
-                f", cell_size: len is {len(self.cell_size)}"
-                f", in_cell_position: len is {len(self.in_cell_position)}"
-                f" have to have length equal ndim = {self.ndim}"
-            )
-
-    def get_modified(self, **kwargs):
-        dict_repr = asdict(self)
-        dict_repr.update(kwargs)
-        return FieldMetaData(**dict_repr)
-
-    @property
-    def last_cell_positions(self):
-        return np.add(self.first_cell_positions, np.multiply(self.shape, self.cell_size))
-
-    @property
-    def img_meta(self):
-        return {"simplig_" + k: f"{str(v)}" for k, v in asdict(self).items()}
-
-    @property
-    def plot_title(self):
-        slicing_description = ""
-        if self.slicing_positions is not None:
-            for axis, pos in self.slicing_positions.items():
-                if pos is not None:
-                    if slicing_description:
-                        slicing_description += " and"
-                    slicing_description += f" at {pos.to_compact():.6g~P} along {axis}"
-        averaging_description = ""
-        if self.averaging_region is not None:
-            for axis, reg in self.averaging_region.items():
-                if reg is not None:
-                    if averaging_description:
-                        averaging_description += " and"
-                    averaging_description += (
-                        f" from {reg[0].to_compact():.6g~P} "
-                        f"to {reg[1].to_compact():.6g~P} along {axis}"
-                    )
-        title = f"{self.field_description} at {self.time.to_compact() :.6g~P}"
-        if slicing_description:
-            title += f" sliced{slicing_description}"
-        if averaging_description:
-            title += f" averaged{averaging_description}"
-        return title
-
-    def get_imshow_extent(self, unit=None):
-        assert self.ndim == 2, "imshow extent is defined only for 2D datasets"
-        extent = [
-            self.first_cell_positions[1] + (self.in_cell_position[1] - 0.5) * self.cell_size[1],
-            self.last_cell_positions[1] + (0.5 + self.in_cell_position[1]) * self.cell_size[1],
-            self.first_cell_positions[0] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
-            self.last_cell_positions[0] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
-        ]
-        extent = ureg.Quantity.from_list(extent)
-        if unit is not None:
-            extent = extent.to(unit)
-        else:
-            extent = extent.to(np.max(np.abs(extent)).to_compact().units)
-        return extent.magnitude, extent.units
-
-    def get_positions(self, axis, unit=None):
-        # assert axis>= 0 and axis < self.ndim
-        positions = (
-            np.arange(self.shape[axis]) * self.cell_size[axis] + self.first_cell_positions[axis]
-        )
-        if unit is not None:
-            positions = positions.to(unit)
-        else:
-            positions = positions.to(np.max(positions).to_compact().units)
-        return positions
-
-
-def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow_kwargs):
-    assert meta_data.ndim == 2
-    if ax is None:
-        f, ax = plt.subplots(1)
-    else:
-        f = ax.get_figure()
-    norm = None
-    if log_scale:
-        if np.any(data < 0):
-            norm = SymLogNorm(1.0)
-        else:
-            norm = LogNorm()
-    kwargs = {"norm": norm, "interpolation": "none"}
-    kwargs.update(imshow_kwargs)
-    data *= meta_data.value_unit
-    if unit is not None:
-        data = data.to(unit)
-    extent, extent_unit = meta_data.get_imshow_extent()
-    img = ax.imshow(data.magnitude, extent=extent, origin="lower", **kwargs)
-
-    ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit:~P}]")
-    ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit:~P}]")
-    ax.set_title(meta_data.plot_title)
-    cax = ax.inset_axes([1.01, 0.0, 0.05, 1])
-    f.colorbar(img, ax=ax, cax=cax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$")
-    plt.tight_layout()
-
-def wrap_text(text, length):
-    return "\n".join(wrap(text, length))
-
-
-def plot_1d_field(
-    data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, scatter=False, **plot_kwargs
-):
-    assert meta_data.ndim == 1
-    if ax is None:
-        _, ax = plt.subplots(1)
-    if log_scale:
-        ax.set_yscale("log")
-    x = meta_data.get_positions(0)
-    if unit is not None:
-        data = ((data * meta_data.value_unit).to(unit)).magnitude
-    else:
-        unit = meta_data.value_unit
-    if scatter:
-        ax.scatter(x.magnitude, data, **plot_kwargs)
-    else:
-        ax.plot(x.magnitude, data, **plot_kwargs)
-    ax.set_xlabel(meta_data.axis_labels[0] + f" [{x.units:~P}]")
-    ax.set_ylabel(rf"{meta_data.value_symbol}" + f"[{unit:~P}]")
-    title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
-    ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
-    plt.tight_layout()
-
-
-def plot_field(data, meta_data, ax=None, log_scale=False, unit=None, **plot_func_kwargs):
-    if meta_data.ndim == 0:
-        if unit is not None:
-            quantity = (data * meta_data.value_unit).to(unit)
-        else:
-            quantity = data * meta_data.value_unit
-        print(meta_data.plot_title + f" is {quantity:.6g~P}")
-
-    elif meta_data.ndim == 1:
-        plot_1d_field(data, meta_data, ax, log_scale, unit, **plot_func_kwargs)
-    elif meta_data.ndim == 2:
-        plot_2d_field(data, meta_data, ax, log_scale, unit, **plot_func_kwargs)
-    else:
-        raise Exception("Wrong dimensionality, meta_data.ndim must be 0, 1, or 2!")
-
-
-def get_first_cell_position(mr, axis, slicing=None):
+def _get_first_cell_position(mr, axis, slicing=None):
     global_offset = mr.get_attribute("gridGlobalOffset")
     if slicing is not None:
         if type(slicing[axis]) is slice:
@@ -204,7 +21,7 @@ def get_first_cell_position(mr, axis, slicing=None):
     return start
 
 
-def unit_dimension_to_pint(unit_dimension):
+def _unit_dimension_to_pint(unit_dimension):
     # unit dimension description from the openPMD standard:
     # powers of the 7 base measures characterizing the record's unit in SI
     # (length L, mass M, time T, electric current I, thermodynamic temperature theta,
@@ -225,7 +42,7 @@ def unit_dimension_to_pint(unit_dimension):
     return unit.units
 
 
-def slice_index_to_position(index, mr, mrc, axis):
+def _slice_index_to_position(index, mr, mrc, axis):
     return (
         mr.grid_spacing[axis] * (index + mrc.position[axis]) + mr.grid_global_offset[axis]
     ) * mr.grid_unit_SI
@@ -251,7 +68,7 @@ class OpenPMDDataLoader:
         slicing=None,
         axes_to_average=None,
         ret_meta=True,
-        unit=None
+        unit=None,
     ):
         # verify correct and supported slicing
         if slicing is not None:
@@ -277,7 +94,7 @@ class OpenPMDDataLoader:
             data = np.squeeze(np.average(data, axis=axes_to_average))
 
         data *= mrc.unit_SI
-        unit_dataset = unit_dimension_to_pint(mr.unit_dimension)
+        unit_dataset = _unit_dimension_to_pint(mr.unit_dimension)
         if unit is not None:
             data = data * unit_dataset
             data = data.to(unit)
@@ -290,12 +107,12 @@ class OpenPMDDataLoader:
                 if type(sc) is int:
                     slice_axes.append(i)
                     slicing_positions[mr.axis_labels[i]] = (
-                        slice_index_to_position(sc, mr, mrc, i) * ureg.meter
+                        _slice_index_to_position(sc, mr, mrc, i) * ureg.meter
                     )
 
             axis_labels = mr.axis_labels
             first_cell_positions = [
-                get_first_cell_position(mr, axis, slicing) for axis in range(mrc.ndim)
+                _get_first_cell_position(mr, axis, slicing) for axis in range(mrc.ndim)
             ]
             first_cell_positions = np.array(first_cell_positions) * ureg.meter
             cell_size = np.array(mr.grid_spacing) * mr.grid_unit_SI * ureg.meter
@@ -358,7 +175,6 @@ class OpenPMDDataLoader:
     ):
         """
 
-        :param series:
         :param iteration:
         :param species:
         :param slicing:
