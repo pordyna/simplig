@@ -80,7 +80,20 @@ def get_chunk_1d(offset_total: int, stop_total: int, chunk_idx: int, n_chunks: i
 
 
 @numba.jit(nopython=True, parallel=False)
-def _process_loaded_iteration_data(
+def _process_loaded_iteration_data_0(
+    read_buffer, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
+):
+    tmp_sum = np.sum(read_buffer, axis=0)
+    # distribute values
+    for ii in numba.prange(len(beam_index_arr)):
+        beam_idx = beam_index_arr[ii]
+        prop_pos = prop_axis_pos_arr[ii]
+        coeff_local = interpolation_coeff_arr[ii]
+        out_volume[beam_idx, :, :] += tmp_sum[prop_pos - prop_min, :, :] * coeff_local
+
+
+@numba.jit(nopython=True, parallel=False)
+def _process_loaded_iteration_data_1(
     read_buffer, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
 ):
     tmp_sum = np.sum(read_buffer, axis=0)
@@ -90,6 +103,19 @@ def _process_loaded_iteration_data(
         prop_pos = prop_axis_pos_arr[ii]
         coeff_local = interpolation_coeff_arr[ii]
         out_volume[beam_idx, :, :] += tmp_sum[:, prop_pos - prop_min, :] * coeff_local
+
+
+@numba.jit(nopython=True, parallel=False)
+def _process_loaded_iteration_data_2(
+    read_buffer, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
+):
+    tmp_sum = np.sum(read_buffer, axis=0)
+    # distribute values
+    for ii in numba.prange(len(beam_index_arr)):
+        beam_idx = beam_index_arr[ii]
+        prop_pos = prop_axis_pos_arr[ii]
+        coeff_local = interpolation_coeff_arr[ii]
+        out_volume[beam_idx, :, :] += tmp_sum[:, :, prop_pos - prop_min] * coeff_local
 
 
 class SAXSPropagator:
@@ -420,6 +446,14 @@ class SAXSPropagator:
         out_series.close()
 
     def __call__(self, disable_progress=None, tqdm_kwargs=None):
+        if self.prop_axis == 0:
+            _process_loaded_iteration_data = _process_loaded_iteration_data_0
+        if self.prop_axis == 1:
+            _process_loaded_iteration_data = _process_loaded_iteration_data_1
+        if self.prop_axis == 2:
+            _process_loaded_iteration_data = _process_loaded_iteration_data_2
+        else:
+            raise NotImplementedError("This code only works with 3Dim data.")
         if tqdm_kwargs is None:
             tqdm_kwargs = {}
 
@@ -432,7 +466,7 @@ class SAXSPropagator:
         for iteration_idx in tqdm(
             self._used_iterations,
             position=self._comm.rank,
-            desc=f"MPI rank: {self._comm.rank}",
+            desc=f"MPI rank {self._comm.rank}: ",
             disable=disable_progress,
             **tqdm_kwargs,
         ):
