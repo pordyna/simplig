@@ -1,12 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, SymLogNorm
+
 # from .. import ureg
 
 from textwrap import wrap
 
 
-def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow_kwargs):
+def plot_2d_field(
+    data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, **imshow_kwargs
+):
     assert meta_data.ndim == 2
     if ax is None:
         f, ax = plt.subplots(1)
@@ -28,7 +31,8 @@ def plot_2d_field(data, meta_data, ax=None, log_scale=False, unit=None, **imshow
 
     ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit:~P}]")
     ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit:~P}]")
-    ax.set_title(meta_data.plot_title)
+    title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
+    ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
     cax = ax.inset_axes([1.01, 0.0, 0.05, 1])
     f.colorbar(
         img, ax=ax, cax=cax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$"
