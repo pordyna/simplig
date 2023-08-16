@@ -127,6 +127,9 @@ class SAXSPropagator:
         t_0=0.0 * ureg.second,
         first_avail_iteration=None,
         last_avail_iteration=None,
+        streaming=False,
+        linear_read=False,
+        stream_tag=0,
     ):
         self.prop_axis_str = None
         self.chunking_axis = None
@@ -147,18 +150,31 @@ class SAXSPropagator:
         self._first_cell_in_prop = None
         self._volume = None
 
+        self.stream_tag = stream_tag
+        if streaming:
+            linear_read = True
+        self.streaming = streaming
+        self.linear_read = linear_read
+
+        if linear_read:
+            access_mode = io.Access_Type.read_linear
+            assert first_avail_iteration is not None
+            assert last_avail_iteration is not None
+        else:
+            access_mode = io.Access_Type.read_only
         if HAVE_MPI:
             self._comm: CommType = MPI.COMM_WORLD
         else:
             self._comm: CommType = FallbackMPICommunicator()
 
         if HAVE_MPI:
-            self._series = io.Series(str(series_path), io.Access_Type.read_only, self._comm)
+            self._series = io.Series(str(series_path), access_mode, self._comm)
         else:
-            self._series = io.Series(str(series_path), io.Access_Type.read_only)
+            self._series = io.Series(str(series_path), access_mode)
 
         if first_avail_iteration is None:
             self._first_avail_iteration = list(self._series.iterations)[0]
+
         else:
             self._first_avail_iteration = first_avail_iteration
         if last_avail_iteration is None:
@@ -166,7 +182,14 @@ class SAXSPropagator:
         else:
             self._last_avail_iteration = last_avail_iteration
 
-        first_iteration = self._series.iterations[self._first_avail_iteration]
+        if streaming and self._comm.rank == 0:
+            with open(f"firstIterationRequest_{self.stream_tag}", "w") as f:
+                f.write(str(self._first_avail_iteration))
+
+        if linear_read:
+            first_iteration = next(iter(self._series.read_iterations()))
+        else:
+            first_iteration = self._series.iterations[self._first_avail_iteration]
         first_iteration.open()
         self.simulation_step_duration = (
             first_iteration.dt * first_iteration.time_unit_SI * ureg.second
@@ -321,11 +344,16 @@ class SAXSPropagator:
         self._it_max = times_max * self.sim_write_interval
         self._interpolation_coeff = times - times_min
 
-        iterations = self._series.iterations
         self._used_iterations = np.sort(np.unique(np.concatenate((self._it_min, self._it_max))))
-        is_in = np.isin(self._used_iterations, iterations)
-
-        assert np.all(is_in), f"missing iterations: {np.unique(self._used_iterations[~is_in])}"
+        if not self.linear_read:
+            iterations = self._series.iterations
+            is_in = np.isin(self._used_iterations, iterations)
+            assert np.all(is_in), f"missing iterations: {np.unique(self._used_iterations[~is_in])}"
+        else:
+            assert self._used_iterations[0] >= self._first_avail_iteration
+            assert self._used_iterations[-1] <= self._last_avail_iteration
+        if self.streaming and self._comm.rank == 0:
+            np.savetxt(f"propagationIterationsRequest_{self.stream_tag}", self._used_iterations)
 
     def gather_results(self):
         size = self._comm.size
@@ -448,9 +476,9 @@ class SAXSPropagator:
     def __call__(self, disable_progress=None, tqdm_kwargs=None):
         if self.prop_axis == 0:
             _process_loaded_iteration_data = _process_loaded_iteration_data_0
-        if self.prop_axis == 1:
+        elif self.prop_axis == 1:
             _process_loaded_iteration_data = _process_loaded_iteration_data_1
-        if self.prop_axis == 2:
+        elif self.prop_axis == 2:
             _process_loaded_iteration_data = _process_loaded_iteration_data_2
         else:
             raise NotImplementedError("This code only works with 3Dim data.")
@@ -463,18 +491,13 @@ class SAXSPropagator:
         shape = tuple(shape)
         self._volume = np.zeros(shape, dtype=np.float64)
 
-        for iteration_idx in tqdm(
-            self._used_iterations,
-            position=self._comm.rank,
-            desc=f"MPI rank {self._comm.rank}: ",
-            disable=disable_progress,
-            **tqdm_kwargs,
-        ):
-            iteration = self._series.iterations[iteration_idx]
-
+        def iteration_loop(iteration: io.Iteration, iteration_idx: int):
             # Find slices needed from this iteration
+            iteration.open()
             where_min = np.where(self._it_min == iteration_idx)
             where_max = np.where(self._it_max == iteration_idx)
+            if where_min[0].size == 0 and where_max[0].size == 0:
+                return
             # indices of beam slices that are in the integration volume at this time step
             beam_index_arr = np.concatenate((where_min[0], where_max[0]))
             # density slices positions along the propagation direction
@@ -515,6 +538,23 @@ class SAXSPropagator:
                 interpolation_coeff_arr,
                 prop_min,
             )
+
+        def tqdm_wrapper(iterator):
+            return tqdm(
+                iterator,
+                position=self._comm.rank,
+                desc=f"MPI rank {self._comm.rank}: ",
+                disable=disable_progress,
+                **tqdm_kwargs,
+            )
+
+        if self.linear_read:
+            for iteration in tqdm_wrapper(self._series.read_iterations()):
+                iteration_loop(iteration, iteration.iteration_index)
+        else:
+            for iteration_idx in tqdm_wrapper(self._used_iterations):
+                iteration = self._series.iterations[iteration_idx]
+                iteration_loop(iteration, iteration_idx)
 
 
 def to_intensity(
