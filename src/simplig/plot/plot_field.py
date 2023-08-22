@@ -7,7 +7,7 @@ from matplotlib.colors import LogNorm, SymLogNorm
 from textwrap import wrap
 
 
-def plot_2d_field(
+def _plot_2d_field(
     data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, **imshow_kwargs
 ):
     assert meta_data.ndim == 2
@@ -44,7 +44,7 @@ def wrap_text(text, length):
     return "\n".join(wrap(text, length))
 
 
-def plot_1d_field(
+def _plot_1d_field(
     data,
     meta_data,
     ax=None,
@@ -75,8 +75,12 @@ def plot_1d_field(
     plt.tight_layout()
 
 
-def plot_field(data, meta_data, ax=None, log_scale=False, unit=None, **plot_func_kwargs):
+def plot_field(field, ax=None, log_scale=False, unit=None, **plot_func_kwargs):
+    data = field.data
+    meta_data = field.meta
     if meta_data.ndim == 0:
+        data = field.data
+        meta_data = field.meta
         if unit is not None:
             quantity = (data * meta_data.value_unit).to(unit)
         else:
@@ -84,8 +88,8 @@ def plot_field(data, meta_data, ax=None, log_scale=False, unit=None, **plot_func
         print(meta_data.plot_title + f" is {quantity:.6g~P}")
 
     elif meta_data.ndim == 1:
-        plot_1d_field(data, meta_data, ax, log_scale, unit, **plot_func_kwargs)
+        _plot_1d_field(data, meta_data, ax, log_scale, unit, **plot_func_kwargs)
     elif meta_data.ndim == 2:
-        plot_2d_field(data, meta_data, ax, log_scale, unit, **plot_func_kwargs)
+        _plot_2d_field(data, meta_data, ax, log_scale, unit, **plot_func_kwargs)
     else:
         raise Exception("Wrong dimensionality, meta_data.ndim must be 0, 1, or 2!")

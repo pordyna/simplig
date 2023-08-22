@@ -2,6 +2,7 @@ import numpy as np
 import openpmd_api as io
 from .. import ureg
 from ..data import FieldMetaData
+from .DescribedField import DescribedField
 
 
 def _get_first_cell_position(mr, axis, slicing=None):
@@ -158,7 +159,7 @@ class OpenPMDDataLoader:
                 slicing_positions=slicing_positions,
                 averaging_region=averaging_region,
             )
-            return data, meta_data
+            return DescribedField(data, meta_data)
         else:
             return data
 
@@ -220,5 +221,5 @@ class OpenPMDDataLoader:
                 value_symbol=value_symbol,
                 value_unit=value_unit,
             )
-            return temp.magnitude, temp_meta
+            return DescribedField(temp.magnitude, temp_meta)
         return temp.magnitude
