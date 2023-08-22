@@ -1,7 +1,7 @@
 import numpy as np
 from dataclasses import dataclass, asdict
 from typing import Sequence
-from typing import Mapping, Optional, AnyStr
+from typing import Mapping, Optional, AnyStr, Tuple, Union
 
 from .. import ureg
 
@@ -23,8 +23,10 @@ class FieldMetaData:
     field_description: AnyStr
     value_symbol: AnyStr = ""
     # extra info about slicing and averaging
-    slicing_positions: Optional[Mapping[AnyStr, ureg.Quantity]] = None
-    averaging_region: Optional[Mapping[AnyStr, ureg.Quantity]] = None
+    slicing_positions: Mapping[AnyStr, Union[ureg.Quantity, None]] = None
+    averaging_region: Mapping[AnyStr, Union[ureg.Quantity, None]] = None
+    # applied_rotations
+    applied_rotations: Sequence[Tuple[AnyStr, ureg.Quantity]] = None
 
     def __post_init__(self):
         dim_condition = (

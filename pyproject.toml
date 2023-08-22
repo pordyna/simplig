@@ -13,7 +13,8 @@ dependencies=[
     "openpmd-api>=0.14",
     "mpi4py",
     "numba",
-    "tqdm"
+    "tqdm",
+    "affine-transform"
 ]
 
 [build-system]

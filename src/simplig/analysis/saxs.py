@@ -12,9 +12,11 @@ from typing import Mapping, Union, Optional
 from numpy.typing import ArrayLike
 
 from tqdm.autonotebook import tqdm
-from copy import deepcopy
+from copy import copy, deepcopy
 
 from ..data import FieldMetaData
+from ..data import rotate
+from ..data import DescribedField
 
 # type defs:
 Domain = tuple[Union[ureg.Quantity, None], Union[ureg.Quantity, None]]
@@ -81,9 +83,8 @@ def get_chunk_1d(offset_total: int, stop_total: int, chunk_idx: int, n_chunks: i
 
 @numba.jit(nopython=True, parallel=False)
 def _process_loaded_iteration_data_0(
-    read_buffer, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
+    tmp_sum, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
 ):
-    tmp_sum = np.sum(read_buffer, axis=0)
     # distribute values
     for ii in numba.prange(len(beam_index_arr)):
         beam_idx = beam_index_arr[ii]
@@ -94,9 +95,8 @@ def _process_loaded_iteration_data_0(
 
 @numba.jit(nopython=True, parallel=False)
 def _process_loaded_iteration_data_1(
-    read_buffer, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
+    tmp_sum, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
 ):
-    tmp_sum = np.sum(read_buffer, axis=0)
     # distribute values
     for ii in numba.prange(len(beam_index_arr)):
         beam_idx = beam_index_arr[ii]
@@ -107,9 +107,8 @@ def _process_loaded_iteration_data_1(
 
 @numba.jit(nopython=True, parallel=False)
 def _process_loaded_iteration_data_2(
-    read_buffer, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
+    tmp_sum, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
 ):
-    tmp_sum = np.sum(read_buffer, axis=0)
     # distribute values
     for ii in numba.prange(len(beam_index_arr)):
         beam_idx = beam_index_arr[ii]
@@ -127,9 +126,10 @@ class SAXSPropagator:
         t_0=0.0 * ureg.second,
         first_avail_iteration=None,
         last_avail_iteration=None,
-        streaming=False,
         linear_read=False,
-        stream_tag=0,
+        rotation_axis=None,
+        rotation_angle=None,
+        read_options="",
     ):
         self.prop_axis_str = None
         self.chunking_axis = None
@@ -150,10 +150,6 @@ class SAXSPropagator:
         self._first_cell_in_prop = None
         self._volume = None
 
-        self.stream_tag = stream_tag
-        if streaming:
-            linear_read = True
-        self.streaming = streaming
         self.linear_read = linear_read
 
         if linear_read:
@@ -168,9 +164,9 @@ class SAXSPropagator:
             self._comm: CommType = FallbackMPICommunicator()
 
         if HAVE_MPI:
-            self._series = io.Series(str(series_path), access_mode, self._comm)
+            self._series = io.Series(str(series_path), access_mode, self._comm, read_options)
         else:
-            self._series = io.Series(str(series_path), access_mode)
+            self._series = io.Series(str(series_path), access_mode, read_options)
 
         if first_avail_iteration is None:
             self._first_avail_iteration = list(self._series.iterations)[0]
@@ -181,10 +177,6 @@ class SAXSPropagator:
             self._last_avail_iteration = list(self._series.iterations)[-1]
         else:
             self._last_avail_iteration = last_avail_iteration
-
-        if streaming and self._comm.rank == 0:
-            with open(f"firstIterationRequest_{self.stream_tag}", "w") as f:
-                f.write(str(self._first_avail_iteration))
 
         if linear_read:
             first_iteration = next(iter(self._series.read_iterations()))
@@ -217,14 +209,8 @@ class SAXSPropagator:
 
         self._in_unit_SI = example_mrc.unit_SI
 
-        self._cell_sizes = np.array(example_mr.grid_spacing) * example_mr.grid_unit_SI * ureg.meter
-        self._simulation_shape = example_mrc.shape
         axis_labels = example_mr.axis_labels
-        self._in_axis_labels = axis_labels
-        self._axis_map = {key: value for value, key in enumerate(axis_labels)}
-        self._grid_offset = (
-            np.array(example_mr.grid_global_offset) * example_mr.grid_unit_SI * ureg.meter
-        )
+        axis_map = {key: value for value, key in enumerate(axis_labels)}
         self._field_position = example_mrc.position
         self._read_dtype = example_mrc.dtype
 
@@ -235,6 +221,47 @@ class SAXSPropagator:
 
         # internal units:
         self._unit_time_int = self.sim_write_interval * self.simulation_step_duration
+
+        self.rotation_axis_idx: Union[None, int] = None
+        self.rotation_angle_rad: Union[None, float] = None
+        self.rotation_axis_str = rotation_axis
+        if rotation_axis is not None:
+            self.rotation_axis_idx = axis_map[rotation_axis]
+            self.rotation_angle_rad = rotation_angle.to(ureg.radian).magnitude
+
+        pre_rot_meta = FieldMetaData(
+            ndim=3,
+            axis_labels=axis_labels,
+            first_cell_positions=np.array(example_mr.grid_global_offset)
+            * example_mr.grid_unit_SI
+            * ureg.meter,
+            shape=example_mrc.shape,
+            cell_size=np.array(example_mr.grid_spacing) * example_mr.grid_unit_SI * ureg.meter,
+            in_cell_position=self._field_position,
+            value_unit=1 / ureg.meter**3,
+            time=0 * ureg.second,
+            field_description="",
+        )
+        if rotation_axis is not None:
+            past_rot_meta = rotate(
+                DescribedField(None, pre_rot_meta),
+                self.rotation_angle_rad,
+                rotation_axis_idx=self.rotation_axis_idx,
+            ).meta
+        else:
+            past_rot_meta = pre_rot_meta
+
+        self._pre_rot_sim_shape = pre_rot_meta.shape
+        # the following block needs changing when applying rotation:
+        # celll size doesn't change buuut the cells have to cubes.
+        self._cell_sizes = past_rot_meta.cell_size
+        self._simulation_shape = past_rot_meta.shape
+        self._grid_offset = past_rot_meta.first_cell_positions
+        # x - > x' when using rotation
+        self._axis_map = {key: value for value, key in enumerate(past_rot_meta.axis_labels)}
+        self._in_axis_labels = past_rot_meta.axis_labels
+
+        # may need to change _read_dtype
 
         self._total_offset = [0, 0, 0]
         self._total_extent = list(self._simulation_shape)
@@ -352,8 +379,6 @@ class SAXSPropagator:
         else:
             assert self._used_iterations[0] >= self._first_avail_iteration
             assert self._used_iterations[-1] <= self._last_avail_iteration
-        if self.streaming and self._comm.rank == 0:
-            np.savetxt(f"propagationIterationsRequest_{self.stream_tag}", self._used_iterations)
 
     def gather_results(self):
         size = self._comm.size
@@ -407,7 +432,7 @@ class SAXSPropagator:
             )
         else:
             out_series = io.Series(str(out_series_path), io.Access_Type.create, options=options)
-        out_series.set_software("plasma_hed_xray")
+        out_series.set_software("simplig")
         it: io.Iteration = out_series.iterations[0]
         it.open()
         mesh: io.Mesh = it.meshes["integrated_density"]
@@ -420,21 +445,26 @@ class SAXSPropagator:
         it.set_time_unit_SI(1e-15)
         it.set_attribute("t_0", t_0.magnitude)
 
+        unit_length = self._unit_length_int.to("meter").magnitude
+
         global_extent = deepcopy(self._total_extent)
         global_extent.pop(self.prop_axis)
         global_extent.insert(0, self._detection_duration_int_time)
-        global_offset = self._total_offset
+
+        global_offset = deepcopy(self._total_offset)
+        global_offset = list(global_offset + self._grid_offset.to("meter").magnitude / unit_length)
         global_offset.pop(self.prop_axis)
         global_offset.insert(0, 0)
 
         local_offset = deepcopy(self._chunk_offset)
+        local_extent = deepcopy(self._chunk_extent)
+        for dd in range(len(local_offset)):
+            local_offset[dd] -= self._total_offset[dd]
         local_offset.pop(self.prop_axis)
         local_offset.insert(0, 0)
-        local_extent = self._chunk_extent
+
         local_extent.pop(self.prop_axis)
         local_extent.insert(0, self._detection_duration_int_time)
-
-        unit_length = self._unit_length_int.to("meter").magnitude
 
         grid_spacing = deepcopy(list(self._cell_sizes.magnitude / unit_length))
         grid_spacing.pop(self.prop_axis)
@@ -448,6 +478,9 @@ class SAXSPropagator:
         position = deepcopy(list(self._field_position))
         position.pop(self.prop_axis)
         position.insert(0, 0.0)
+        if self.rotation_axis_str is not None:
+            mesh.set_attribute("initialRotationAxis", self.rotation_axis_str)
+            mesh.set_attribute("rotationAngleRad", self.rotation_angle_rad)
 
         mesh.set_attribute("propagationAxis", self.prop_axis_str)
         mesh.set_attribute(
@@ -472,6 +505,48 @@ class SAXSPropagator:
         mrc.store_chunk(self._volume, offset=local_offset, extent=local_extent)
         it.close()
         out_series.close()
+
+    def _fill_read_buffer(self, iteration, mrc_list, offset, extent):
+        read_buffer = np.empty((len(mrc_list), *extent), dtype=self._read_dtype)
+        for ii, mrc in enumerate(mrc_list):
+            mrc.load_chunk(read_buffer[ii], offset=offset, extent=extent)
+        self._series.flush()
+        iteration.close()
+        return np.sum(read_buffer, axis=0)
+
+    def _load_data_no_rotation(self, iteration, mrc_list, offset, extent):
+        read_buffer = self._fill_read_buffer(iteration, mrc_list, offset, extent)
+        read_buffer = read_buffer.astype(np.float64, copy=False)
+        return read_buffer
+
+    def _load_data_with_rotation(self, iteration, mrc_list, offset, extent):
+        # It is ensured that the rotation axis is the same as the chunking axis.
+        # We need the whole simulation domain in the rotation plane, but we can
+        # restrict the load to chunk along the rotation angle. The chunking also
+        # doesn't change since the axis will remain unchanged.
+
+        pre_rot_offset = [0, 0, 0]
+        pre_rot_extent = list(copy(self._pre_rot_sim_shape))
+        pre_rot_offset[self.rotation_axis_idx] = offset[self.rotation_axis_idx]
+        pre_rot_extent[self.rotation_axis_idx] = extent[self.rotation_axis_idx]
+
+        read_buffer = self._fill_read_buffer(iteration, mrc_list, pre_rot_offset, pre_rot_extent)
+        read_buffer = rotate(
+            read_buffer, self.rotation_angle_rad, rotation_axis_idx=self.rotation_axis_idx
+        )
+        slicing = [None, None, None]
+        for dd in range(3):
+            slicing[dd] = slice(offset[dd], offset[dd] + extent[dd])
+        slicing[self.rotation_axis_idx] = slice(None)
+        slicing = tuple(slicing)
+        read_buffer = read_buffer[slicing]
+        return read_buffer.astype(np.float64, copy=False)
+
+    def _load_data(self, iteration, mrc_list, offset, extent):
+        if self.rotation_axis_idx is not None:
+            return self._load_data_with_rotation(iteration, mrc_list, offset, extent)
+        else:
+            return self._load_data_no_rotation(iteration, mrc_list, offset, extent)
 
     def __call__(self, disable_progress=None, tqdm_kwargs=None):
         if self.prop_axis == 0:
@@ -521,40 +596,36 @@ class SAXSPropagator:
             extent = deepcopy(list(self._chunk_extent))
             offset[self.prop_axis] = start
             extent[self.prop_axis] = stop - start
-            read_buffer = np.empty((len(self.density_fields), *extent), dtype=self._read_dtype)
 
-            for ii, mrc in enumerate(mrc_list):
-                mrc.load_chunk(read_buffer[ii], offset=offset, extent=extent)
-
-            self._series.flush()
-            iteration.close()
-            read_buffer = read_buffer.astype(np.float64, copy=False)
-
+            tmp_sum = self._load_data(iteration, mrc_list, offset, extent)
             _process_loaded_iteration_data(
-                read_buffer,
+                tmp_sum,
                 self._volume,
                 beam_index_arr,
                 prop_axis_pos_arr,
                 interpolation_coeff_arr,
                 prop_min,
             )
+            pbar.update(1)
 
-        def tqdm_wrapper(iterator):
+        def _tqdm():
             return tqdm(
-                iterator,
                 position=self._comm.rank,
                 desc=f"MPI rank {self._comm.rank}: ",
                 disable=disable_progress,
                 **tqdm_kwargs,
+                total=len(self._used_iterations),
             )
 
         if self.linear_read:
-            for iteration in tqdm_wrapper(self._series.read_iterations()):
-                iteration_loop(iteration, iteration.iteration_index)
+            with _tqdm() as pbar:
+                for iteration in self._series.read_iterations():
+                    iteration_loop(iteration, iteration.iteration_index)
         else:
-            for iteration_idx in tqdm_wrapper(self._used_iterations):
-                iteration = self._series.iterations[iteration_idx]
-                iteration_loop(iteration, iteration_idx)
+            with _tqdm() as pbar:
+                for iteration_idx in self._used_iterations:
+                    iteration = self._series.iterations[iteration_idx]
+                    iteration_loop(iteration, iteration_idx)
 
 
 def to_intensity(
