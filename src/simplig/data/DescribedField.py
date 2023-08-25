@@ -63,7 +63,7 @@ class DescribedField:
                         assert sc.start >= 0, "No support for negative indexing in slice start"
                     if sc.step is not None:
                         assert sc.step == 1, "No support for striding"
-        # handle proper slices (integer indexing)
+        # handle proper slices (integer indexing)>.
         slice_axes = []
         slicing_positions = dict.fromkeys(self.meta.axis_labels, None)
         for i, sc in enumerate(slicing):
@@ -76,12 +76,21 @@ class DescribedField:
         first_cell_positions = [
             self._get_first_cell_position(axis, slicing) for axis in range(self.meta.ndim)
         ]
-        first_cell_positions = ureg.Quantity.from_list(first_cell_positions)
+        #first_cell_positions = ureg.Quantity.from_list(first_cell_positions)
+        def _delete(sequence, idxs):
+            try:
+                sequence = np.delete(sequence, idxs)
+            except ValueError:
+                sequence = list(sequence)
+                for idx in sorted(idxs, reverse=True):
+                    del sequence[idx]
+            return sequence
+
         cell_size = self.meta.cell_size
         in_cell_position = self.meta.in_cell_position
         axis_labels = np.delete(axis_labels, slice_axes)
-        first_cell_positions = np.delete(first_cell_positions, slice_axes)
-        cell_size = np.delete(cell_size, slice_axes)
+        first_cell_positions = _delete(first_cell_positions, slice_axes)
+        cell_size = _delete(cell_size, slice_axes)
         in_cell_position = np.delete(in_cell_position, slice_axes)
         new_data = self.data[slicing]
         new_meta = self.meta.get_modified(

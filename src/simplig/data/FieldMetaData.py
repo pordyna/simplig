@@ -13,9 +13,9 @@ class FieldMetaData:
     # dataclass fields:
     # axes
     axis_labels: Sequence[AnyStr]
-    first_cell_positions: ureg.Quantity
+    first_cell_positions: Union[ureg.Quantity, Sequence[ureg.Quantity]]
     shape: Sequence[int]
-    cell_size: ureg.Quantity
+    cell_size: Union[ureg.Quantity, Sequence[ureg.Quantity]]
     in_cell_position: Sequence[float]
     # field value
     value_unit: ureg.Unit
@@ -47,6 +47,10 @@ class FieldMetaData:
                 f" have to have length equal ndim = {self.ndim}"
             )
 
+
+
+
+
     def get_modified(self, **kwargs):
         dict_repr = asdict(self)
         dict_repr.update(kwargs)
@@ -54,7 +58,10 @@ class FieldMetaData:
 
     @property
     def last_cell_positions(self):
-        return np.add(self.first_cell_positions, np.multiply(self.shape, self.cell_size))
+        result = [0] * self.ndim
+        for dd in range(self.ndim):
+            result[dd] = self.first_cell_positions[dd] + self.shape[dd] * self.cell_size[dd]
+        return result
 
     @property
     def img_meta(self):
@@ -86,7 +93,7 @@ class FieldMetaData:
             title += f" averaged{averaging_description}"
         return title
 
-    def get_imshow_extent(self, unit=None):
+    def get_imshow_extent(self, units=None):
         assert self.ndim == 2, "imshow extent is defined only for 2D datasets"
         extent = [
             self.first_cell_positions[1] + (self.in_cell_position[1] - 0.5) * self.cell_size[1],
@@ -94,12 +101,21 @@ class FieldMetaData:
             self.first_cell_positions[0] + (self.in_cell_position[0] - 0.5) * self.cell_size[0],
             self.last_cell_positions[0] + (0.5 + self.in_cell_position[0]) * self.cell_size[0],
         ]
-        extent = ureg.Quantity.from_list(extent)
-        if unit is not None:
-            extent = extent.to(unit)
+        if units is not None:
+            extent[0] = extent[0].to(units[1])
+            extent[1] = extent[1].to(units[1])
+            extent[2] = extent[2].to(units[0])
+            extent[3] = extent[3].to(units[0])
         else:
-            extent = extent.to(np.max(np.abs(extent)).to_compact().units)
-        return extent.magnitude, extent.units
+            unit_0 = np.max(np.abs(ureg.Quantity.from_list([extent[2], extent[3]]))).to_compact().units
+            unit_1 = np.max(np.abs(ureg.Quantity.from_list([extent[0], extent[1]]))).to_compact().units
+            extent[0] = extent[0].to(unit_1)
+            extent[1] = extent[1].to(unit_1)
+            extent[2] = extent[2].to(unit_0)
+            extent[3] = extent[3].to(unit_0)
+            units = (unit_0, unit_1)
+            extent = [el.magnitude for el in extent]
+        return extent, units
 
     def get_positions(self, axis, unit=None):
         # assert axis>= 0 and axis < self.ndim

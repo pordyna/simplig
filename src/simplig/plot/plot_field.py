@@ -26,11 +26,11 @@ def _plot_2d_field(
     data *= meta_data.value_unit
     if unit is not None:
         data = data.to(unit)
-    extent, extent_unit = meta_data.get_imshow_extent()
+    extent, (extent_unit_y, extent_unit_x) = meta_data.get_imshow_extent()
     img = ax.imshow(data.magnitude, extent=extent, origin="lower", **kwargs)
 
-    ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit:~P}]")
-    ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit:~P}]")
+    ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit_x:~P}]")
+    ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit_y:~P}]")
     title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
     ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
     cax = ax.inset_axes([1.01, 0.0, 0.05, 1])

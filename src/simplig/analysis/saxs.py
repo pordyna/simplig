@@ -5,6 +5,7 @@ from .. import ureg
 import numba
 from warnings import warn, filterwarnings
 from tqdm import TqdmExperimentalWarning
+import dask.array as da
 
 filterwarnings("ignore", category=TqdmExperimentalWarning)
 
@@ -628,66 +629,73 @@ class SAXSPropagator:
                     iteration_loop(iteration, iteration_idx)
 
 
+
 def to_intensity(
-    volume: ArrayLike,
+    field: Union[DescribedField, ArrayLike],
     photons_in_pulse: int,
-    pulse_duration: ureg.Quantity,
-    pulse_crosssection: ureg.Quantity,
-    volume_metadata: Optional[FieldMetaData] = None,
+    wavelength,
     pulse_shape: Optional[ArrayLike] = None,
     pulse_profile: Optional[ArrayLike] = None,
+    dask_fft=False,
 ):
-    volume = np.array(volume, copy=True)
+    volume = field.data
+    volume_metadata = field.meta
 
     if pulse_profile is not None:
         pulse_profile = np.array(volume, copy=True)
         volume = volume * np.sqrt(pulse_profile[None, ...])
-    intensity = np.abs(np.fft.fft2(volume, norm="backward")) ** 2
+    if dask_fft:
+        volume = da.from_array(volume, chunks={0 : 'auto', 1: -1,  2: -1})
+        intensity = da.abs((da.fft.fft2(volume))) ** 2
+        intensity = intensity.compute()
+    else:
+        intensity = np.abs(np.fft.fft2(volume)) ** 2
     intensity = np.fft.fftshift(intensity, axes=(-1, -2))
+    cell_size = list(volume_metadata.cell_size)
+    intensity *= (cell_size[1] * cell_size[2]).to(1/volume_metadata.value_unit)
+
     if pulse_shape is not None:
         intensity *= pulse_shape[:, None, None]
+    cell_size[0] = (cell_size[0] / (cs.c * ureg.meter/ureg.second)).to('fs')
     intensity *= photons_in_pulse
-    intensity /= pulse_crosssection.to(ureg.meter ** (2)).magnitude
-    intensity /= pulse_duration.to(ureg.second).magnitude
+    intensity *= wavelength**2
     intensity *= cs.physical_constants["classical electron radius"][0] ** 2
+    intensity *= cell_size[0].to(ureg.second).magnitude
 
-    if volume_metadata is None:
-        return intensity
-    else:
-        ndim = volume_metadata.ndim
-        axis_labels = list(volume_metadata.axis_labels)
-        for i, label in enumerate(axis_labels[1:]):
-            axis_labels[i + 1] = "q_" + label
-        first_cell_positions = list(volume_metadata.first_cell_positions)
-        q1 = np.fft.fftshift(
-            np.fft.fftfreq(volume.shape[1], d=volume_metadata.cell_size[1].magnitude / (2 * np.pi))
-        )
-        q2 = np.fft.fftshift(
-            np.fft.fftfreq(volume.shape[2], d=volume_metadata.cell_size[2].magnitude / (2 * np.pi))
-        )
-        first_cell_positions[1] = q1[0] / volume_metadata.cell_size[1].units
-        first_cell_positions[2] = q2[0] / volume_metadata.cell_size[2].units
-        shape = intensity.shape
-        cell_size = list(volume_metadata.cell_size)
-        cell_size[1] = (q1[1] - q1[0]) / volume_metadata.cell_size[1].units
-        cell_size[2] = (q2[1] - q2[0]) / volume_metadata.cell_size[2].units
-        in_cell_position = volume_metadata.in_cell_position
-        value_unit = (1 * volume_metadata.value_unit).to_base_units().units
-        value_unit *= ureg.meter * ureg.meter / ureg.second
-        time = volume_metadata.time
-        field_description = "Instantaneous intensity"
-        value_symbol = "I"
+    ndim = volume_metadata.ndim
+    axis_labels = list(volume_metadata.axis_labels)
+    axis_labels[0] = 't'
+    for i, label in enumerate(axis_labels[1:]):
+        axis_labels[i + 1] = "q_" + label
+    first_cell_positions = list(volume_metadata.first_cell_positions)
+    first_cell_positions[0] = (first_cell_positions[0] / (cs.c * ureg.meter/ureg.second)).to('fs')
+    q1 = np.fft.fftshift(
+        np.fft.fftfreq(volume.shape[1], d=volume_metadata.cell_size[1].magnitude / (2 * np.pi))
+    )
+    q2 = np.fft.fftshift(
+        np.fft.fftfreq(volume.shape[2], d=volume_metadata.cell_size[2].magnitude / (2 * np.pi))
+    )
+    first_cell_positions[1] = q1[0] / volume_metadata.cell_size[1].units
+    first_cell_positions[2] = q2[0] / volume_metadata.cell_size[2].units
+    shape = intensity.shape
+    cell_size[1] = (q1[1] - q1[0]) / volume_metadata.cell_size[1].units
+    cell_size[2] = (q2[1] - q2[0]) / volume_metadata.cell_size[2].units
+    in_cell_position = volume_metadata.in_cell_position
+    value_unit = ureg.Quantity(1).units
+    time = volume_metadata.time
+    field_description = "Instantaneous intensity"
+    value_symbol = "I"
 
-        metadata = FieldMetaData(
-            ndim=ndim,
-            axis_labels=axis_labels,
-            first_cell_positions=first_cell_positions,
-            shape=shape,
-            cell_size=cell_size,
-            in_cell_position=in_cell_position,
-            value_unit=value_unit,
-            time=time,
-            field_description=field_description,
-            value_symbol=value_symbol,
-        )
-        return intensity, metadata
+    metadata = FieldMetaData(
+        ndim=ndim,
+        axis_labels=axis_labels,
+        first_cell_positions=first_cell_positions,
+        shape=shape,
+        cell_size=cell_size,
+        in_cell_position=in_cell_position,
+        value_unit=value_unit,
+        time=time,
+        field_description=field_description,
+        value_symbol=value_symbol,
+    )
+    return DescribedField(intensity, metadata)
