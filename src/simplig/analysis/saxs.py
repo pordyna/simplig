@@ -635,16 +635,14 @@ def to_intensity(
     field: Union[DescribedField, ArrayLike],
     photons_in_pulse: int,
     wavelength,
-    pulse_shape: Optional[ArrayLike] = None,
-    pulse_profile: Optional[ArrayLike] = None,
+    pulse_shape: Optional[ArrayLike],
+    pulse_profile: Optional[ArrayLike],
     dask_fft=False,
 ):
     volume = field.data
     volume_metadata = field.meta
 
-    if pulse_profile is not None:
-        pulse_profile = np.array(volume, copy=True)
-        volume = volume * np.sqrt(pulse_profile[None, ...])
+    volume = volume * np.sqrt(pulse_profile[None, ...])
     if dask_fft:
         volume = da.from_array(volume, chunks={0 : 'auto', 1: -1,  2: -1})
         intensity = da.abs((da.fft.fft2(volume))) ** 2
@@ -655,8 +653,13 @@ def to_intensity(
     cell_size = list(volume_metadata.cell_size)
     intensity *= (cell_size[1] * cell_size[2]).to(1/volume_metadata.value_unit)
 
-    if pulse_shape is not None:
-        intensity *= pulse_shape[:, None, None]
+
+    axis_labels = list(volume_metadata.axis_labels)
+    axis_labels[0] = 't'
+    for i, label in enumerate(axis_labels[1:]):
+        axis_labels[i + 1] = "q_" + label
+    intensity *= pulse_shape[:, None, None]
+
     cell_size[0] = (cell_size[0] / (cs.c * ureg.meter/ureg.second)).to('fs')
     intensity *= photons_in_pulse
     intensity *= wavelength**2
