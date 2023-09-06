@@ -506,6 +506,7 @@ class SAXSPropagator:
         mrc.store_chunk(self._volume, offset=local_offset, extent=local_extent)
         it.close()
         out_series.close()
+        del out_series
 
     def _fill_read_buffer(self, iteration, mrc_list, offset, extent):
         read_buffer = np.empty((len(mrc_list), *extent), dtype=self._read_dtype)
