@@ -130,7 +130,7 @@ class SAXSPropagator:
         linear_read=False,
         rotation_axis=None,
         rotation_angle=None,
-        read_options="",
+        read_options="{}",
     ):
         self.prop_axis_str = None
         self.chunking_axis = None
@@ -426,7 +426,7 @@ class SAXSPropagator:
                 ].reshape(chunk_shapes[i])
             return result
 
-    def write_to_openpmd(self, out_series_path, options):
+    def write_to_openpmd(self, out_series_path, options="{}"):
         if HAVE_MPI:
             out_series = io.Series(
                 str(out_series_path), io.Access_Type.create, self._comm, options=options
