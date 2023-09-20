@@ -8,7 +8,8 @@ from textwrap import wrap
 
 
 def _plot_2d_field(
-    data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, **imshow_kwargs
+    data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, colorbar=True, tight_layout=True,
+        **imshow_kwargs
 ):
     assert meta_data.ndim == 2
     if ax is None:
@@ -28,16 +29,17 @@ def _plot_2d_field(
         data = data.to(unit)
     extent, (extent_unit_y, extent_unit_x) = meta_data.get_imshow_extent()
     img = ax.imshow(data.magnitude, extent=extent, origin="lower", **kwargs)
-
+    if colorbar:
+        cax = ax.inset_axes([1.01, 0.0, 0.05, 1])
+        f.colorbar(
+            img, ax=ax, cax=cax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$"
+        )
     ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit_x:~P}]")
     ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit_y:~P}]")
     title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
     ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
-    cax = ax.inset_axes([1.01, 0.0, 0.05, 1])
-    f.colorbar(
-        img, ax=ax, cax=cax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$"
-    )
-    plt.tight_layout()
+    if tight_layout:
+        plt.tight_layout()
 
 
 def wrap_text(text, length):
@@ -52,6 +54,7 @@ def _plot_1d_field(
     unit=None,
     title_fontsize=12,
     scatter=False,
+    tight_layout=True,
     **plot_kwargs,
 ):
     assert meta_data.ndim == 1
@@ -72,7 +75,8 @@ def _plot_1d_field(
     ax.set_ylabel(rf"{meta_data.value_symbol}" + f"[{unit:~P}]")
     title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
     ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
-    plt.tight_layout()
+    if tight_layout:
+        plt.tight_layout()
 
 
 def plot_field(field, ax=None, log_scale=False, unit=None, **plot_func_kwargs):
