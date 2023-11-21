@@ -259,7 +259,6 @@ class SAXSPropagator:
         # celll size doesn't change buuut the cells have to cubes.
         self._cell_sizes = past_rot_meta.cell_size
         self._simulation_shape = past_rot_meta.shape
-        print(self._simulation_shape)
         self._grid_offset = past_rot_meta.first_cell_positions
         # x - > x' when using rotation
         self._axis_map = {key: value for value, key in enumerate(past_rot_meta.axis_labels)}
