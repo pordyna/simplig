@@ -273,6 +273,8 @@ class SAXSPropagator:
         self._chunk_offset = None
         self._chunk_extent = None
 
+        self.output_series = None
+
     def _position_to_idx(self, position: ureg.Quantity, axis: str):
         axis_idx = self._axis_map[axis]
         dx = self._cell_sizes[axis_idx].to_base_units()
@@ -429,15 +431,26 @@ class SAXSPropagator:
                 ].reshape(chunk_shapes[i])
             return result
 
-    def write_to_openpmd(self, out_series_path, options="{}"):
+    def _open_output_series(self, out_series_path, options):
         if HAVE_MPI:
-            out_series = io.Series(
+            self.output_series = io.Series(
                 str(out_series_path), io.Access_Type.create, self._comm, options=options
             )
         else:
-            out_series = io.Series(str(out_series_path), io.Access_Type.create, options=options)
-        out_series.set_software("simplig")
-        it: io.Iteration = out_series.iterations[0]
+            self.output_series = io.Series(str(out_series_path), io.Access_Type.create, options=options)
+        self.output_series.set_software("simplig")
+
+    def close_output_series(self):
+        self.output_series.close()
+        del self.output_series
+        self.output_series = None
+
+    def write_to_openpmd(self, out_series_path, options="{}", iteration_idx=0, finalize=True):
+
+        if self.output_series is None:
+            self._open_output_series(out_series_path, options)
+
+        it: io.Iteration = self.output_series.iterations[iteration_idx]
         it.open()
         mesh: io.Mesh = it.meshes["integrated_density"]
         mrc: io.Mesh_Record_Component = mesh[io.Mesh_Record_Component.SCALAR]
@@ -508,8 +521,8 @@ class SAXSPropagator:
         mrc.reset_dataset(dataset)
         mrc.store_chunk(self._volume, offset=local_offset, extent=local_extent)
         it.close()
-        out_series.close()
-        del out_series
+        if finalize:
+            self.close_output_series()
 
     def _fill_read_buffer(self, iteration, mrc_list, offset, extent):
         read_buffer = np.empty((len(mrc_list), *extent), dtype=self._read_dtype)
@@ -553,7 +566,7 @@ class SAXSPropagator:
         else:
             return self._load_data_no_rotation(iteration, mrc_list, offset, extent)
 
-    def __call__(self, disable_progress=None, tqdm_kwargs=None):
+    def __call__(self, disable_progress=None, tqdm_kwargs=None, dump_every_step=True, openpmd_kwargs=None):
         if self.prop_axis == 0:
             _process_loaded_iteration_data = _process_loaded_iteration_data_0
         elif self.prop_axis == 1:
@@ -611,6 +624,8 @@ class SAXSPropagator:
                 interpolation_coeff_arr,
                 prop_min,
             )
+            if dump_every_step:
+                self.write_to_openpmd(**openpmd_kwargs, finalize=False, iteration_idx=iteration_idx)
             pbar.update(1)
 
         def _tqdm():
