@@ -82,7 +82,7 @@ def get_chunk_1d(offset_total: int, stop_total: int, chunk_idx: int, n_chunks: i
     return offset, extent
 
 
-@numba.jit(nopython=True, parallel=False)
+@numba.jit(nopython=True, parallel=True)
 def _process_loaded_iteration_data_0(
     tmp_sum, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
 ):
@@ -94,7 +94,7 @@ def _process_loaded_iteration_data_0(
         out_volume[beam_idx, :, :] += tmp_sum[prop_pos - prop_min, :, :] * coeff_local
 
 
-@numba.jit(nopython=True, parallel=False)
+@numba.jit(nopython=True, parallel=True)
 def _process_loaded_iteration_data_1(
     tmp_sum, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
 ):
@@ -106,7 +106,7 @@ def _process_loaded_iteration_data_1(
         out_volume[beam_idx, :, :] += tmp_sum[:, prop_pos - prop_min, :] * coeff_local
 
 
-@numba.jit(nopython=True, parallel=False)
+@numba.jit(nopython=True, parallel=True)
 def _process_loaded_iteration_data_2(
     tmp_sum, out_volume, beam_index_arr, prop_axis_pos_arr, interpolation_coeff_arr, prop_min
 ):
@@ -131,6 +131,7 @@ class SAXSPropagator:
         rotation_axis=None,
         rotation_angle=None,
         read_options="{}",
+        axis_labels=None,
     ):
         self.prop_axis_str = None
         self.chunking_axis = None
@@ -180,7 +181,8 @@ class SAXSPropagator:
             self._last_avail_iteration = last_avail_iteration
 
         if linear_read:
-            first_iteration = next(iter(self._series.read_iterations()))
+            read_iterations = self._series.read_iterations()
+            first_iteration = next(iter(read_iterations))
         else:
             first_iteration = self._series.iterations[self._first_avail_iteration]
         first_iteration.open()
@@ -209,8 +211,8 @@ class SAXSPropagator:
             assert example_mrc.dtype is mrc.dtype
 
         self._in_unit_SI = example_mrc.unit_SI
-
-        axis_labels = example_mr.axis_labels
+        if axis_labels is None:
+            axis_labels = example_mr.axis_labels
         axis_map = {key: value for value, key in enumerate(axis_labels)}
         self._field_position = example_mrc.position
         self._read_dtype = example_mrc.dtype
@@ -257,6 +259,7 @@ class SAXSPropagator:
         # celll size doesn't change buuut the cells have to cubes.
         self._cell_sizes = past_rot_meta.cell_size
         self._simulation_shape = past_rot_meta.shape
+        print(self._simulation_shape)
         self._grid_offset = past_rot_meta.first_cell_positions
         # x - > x' when using rotation
         self._axis_map = {key: value for value, key in enumerate(past_rot_meta.axis_labels)}
