@@ -119,6 +119,7 @@ def _process_loaded_iteration_data_2(
 
 
 class SAXSPropagator:
+
     def __init__(
         self,
         series_path,
@@ -132,6 +133,8 @@ class SAXSPropagator:
         rotation_angle=None,
         read_options="{}",
         axis_labels=None,
+        checkpoint_series_path=None,
+        checkpoint_options="{}",
     ):
         self.prop_axis_str = None
         self.chunking_axis = None
@@ -151,6 +154,20 @@ class SAXSPropagator:
         self._last_cell_in_prop = None
         self._first_cell_in_prop = None
         self._volume = None
+        self._checkpoint_series = None
+        self._last_iteration_to_process = None
+        self._last_processed_iteration = None
+
+        if checkpoint_series_path is not None:
+            if HAVE_MPI:
+                self._checkpoint_series = io.Series(checkpoint_series_path,
+                                                    io.Access_Type.read_write,
+                                                    self._comm, checkpoint_options)
+            else:
+                self._checkpoint_series = io.Series(checkpoint_series_path,
+                                                    io.Access_Type.read_write,
+                                                    checkpoint_options)
+
 
         self.linear_read = linear_read
 
@@ -384,7 +401,7 @@ class SAXSPropagator:
         else:
             assert self._used_iterations[0] >= self._first_avail_iteration
             assert self._used_iterations[-1] <= self._last_avail_iteration
-
+        self._last_iteration_to_process = self._used_iterations[-1]
     def gather_results(self):
         size = self._comm.size
         if size == 1:
@@ -565,6 +582,8 @@ class SAXSPropagator:
         else:
             return self._load_data_no_rotation(iteration, mrc_list, offset, extent)
 
+    def _restart_from_checkpoint(self, checkpoint_iteration):
+        if
     def __call__(self, disable_progress=None, tqdm_kwargs=None, dump_every_step=True, openpmd_kwargs=None):
         if self.prop_axis == 0:
             _process_loaded_iteration_data = _process_loaded_iteration_data_0
@@ -585,11 +604,11 @@ class SAXSPropagator:
 
         def iteration_loop(iteration: io.Iteration, iteration_idx: int):
             # Find slices needed from this iteration
-            iteration.open()
             where_min = np.where(self._it_min == iteration_idx)
             where_max = np.where(self._it_max == iteration_idx)
             if where_min[0].size == 0 and where_max[0].size == 0:
                 return
+            iteration.open()
             # indices of beam slices that are in the integration volume at this time step
             beam_index_arr = np.concatenate((where_min[0], where_max[0]))
             # density slices positions along the propagation direction
