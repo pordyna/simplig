@@ -596,6 +596,7 @@ class SAXSPropagator:
         if self._comm.rank == 0:
             print(f"Restarting from{checkpoint_iteration}", flush=True)
         self._restarted_from_iteration = checkpoint_iteration
+        self._last_processed_iteration = checkpoint_iteration
 
     def _write_checkpoint(self):
         if self._comm.rank == 0:
