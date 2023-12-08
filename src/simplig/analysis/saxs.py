@@ -135,6 +135,7 @@ class SAXSPropagator:
         axis_labels=None,
         checkpoint_series_path=None,
         checkpoint_options="{}",
+        checkpoint_interval=None,
     ):
         self.prop_axis_str = None
         self.chunking_axis = None
@@ -157,6 +158,7 @@ class SAXSPropagator:
         self._checkpoint_series = None
         self._last_iteration_to_process = None
         self._last_processed_iteration = None
+        self._restarted_from_iteration = None
 
         if checkpoint_series_path is not None:
             if HAVE_MPI:
@@ -167,10 +169,9 @@ class SAXSPropagator:
                 self._checkpoint_series = io.Series(checkpoint_series_path,
                                                     io.Access_Type.read_write,
                                                     checkpoint_options)
-
+            assert self._checkpoint_series.iteration_encoding == io.Iteration_Encoding.file_based, "Checkpointing supports only file-based iteration encoding."
 
         self.linear_read = linear_read
-
         if linear_read:
             access_mode = io.Access_Type.read_linear
             assert first_avail_iteration is not None
@@ -461,12 +462,7 @@ class SAXSPropagator:
         del self.output_series
         self.output_series = None
 
-    def write_to_openpmd(self, out_series_path, options="{}", iteration_idx=0, finalize=True):
-
-        if self.output_series is None:
-            self._open_output_series(out_series_path, options)
-
-        it: io.Iteration = self.output_series.iterations[iteration_idx]
+    def _write_iteration(self, it, iteration_idx):
         it.open()
         mesh: io.Mesh = it.meshes["integrated_density"]
         mrc: io.Mesh_Record_Component = mesh[io.Mesh_Record_Component.SCALAR]
@@ -474,8 +470,8 @@ class SAXSPropagator:
         t_0 = self.t_0.to("fs")
         t_start = (self.simulation_step_duration * self._used_iterations[0]).to("fs") - t_0
         it.set_time(t_start.magnitude)
-        it.set_dt(0.0)
-        it.set_time_unit_SI(1e-15)
+        it.set_dt(self.simulation_step_duration.to('fs') * iteration_idx)
+        it.set_time_unit_SI(1.0e-15)
         it.set_attribute("t_0", t_0.magnitude)
 
         unit_length = self._unit_length_int.to("meter").magnitude
@@ -522,7 +518,7 @@ class SAXSPropagator:
                 self.prop_start.to("m").magnitude,
                 self.prop_end.to("m").magnitude
                 + self._cell_sizes[self.prop_axis].to("m").magnitude,
-            ],
+                ],
         )
         mesh.set_attribute("propagationDomainUnitSI", 1.0)
         mesh.set_grid_global_offset(global_offset)
@@ -537,6 +533,14 @@ class SAXSPropagator:
         mrc.reset_dataset(dataset)
         mrc.store_chunk(self._volume, offset=local_offset, extent=local_extent)
         it.close()
+
+    def write_to_openpmd(self, out_series_path, options="{}", iteration_idx=None, finalize=True):
+        if iteration_idx is None:
+            iteration_idx = self._last_processed_iteration
+        if self.output_series is None:
+            self._open_output_series(out_series_path, options)
+        it: io.Iteration = self.output_series.iterations[iteration_idx]
+        self._write_iteration(it, iteration_idx)
         if finalize:
             self.close_output_series()
 
@@ -583,8 +587,27 @@ class SAXSPropagator:
             return self._load_data_no_rotation(iteration, mrc_list, offset, extent)
 
     def _restart_from_checkpoint(self, checkpoint_iteration):
-        if
-    def __call__(self, disable_progress=None, tqdm_kwargs=None, dump_every_step=True, openpmd_kwargs=None):
+        assert self._checkpoint_series is not None, "Provide checkpoint series!"
+        it = self._checkpoint_series[checkpoint_iteration]
+        it.open()
+        mrc = it.meshes["integrated_density"][io.Mesh_Record_Component.SCALAR]
+        self._volume = mrc[:]
+        self._checkpoint_series.flush()
+        if self._comm.rank == 0:
+            print(f"Restarting from{checkpoint_iteration}", flush=True)
+        self._restarted_from_iteration = checkpoint_iteration
+
+    def _write_checkpoint(self):
+        if self._comm.rank == 0:
+            print(f"Writing checkpoint {self._last_processed_iteration}", flush=True)
+        assert self._checkpoint_series is not None, "Provide checkpoint series!"
+        it = self._checkpoint_series.iterations[self._last_processed_iteration]
+        self._write_iteration(it, self._last_processed_iteration)
+        if self._comm.rank == 0:
+            print(f"Finished writing checkpoint {self._last_processed_iteration}", flush=True)
+
+    def __call__(self, disable_progress=None, tqdm_kwargs=None, dump_every_step=True, openpmd_kwargs=None,
+                 restart_iteration=None, try_restart=False):
         if self.prop_axis == 0:
             _process_loaded_iteration_data = _process_loaded_iteration_data_0
         elif self.prop_axis == 1:
@@ -600,15 +623,25 @@ class SAXSPropagator:
         shape.pop(self.prop_axis)
         shape.insert(0, self._detection_duration_int_time)
         shape = tuple(shape)
-        self._volume = np.zeros(shape, dtype=np.float64)
+        if restart_iteration is not None:
+            self._restart_from_checkpoint(restart_iteration)
+        elif try_restart and len(self._checkpoint_series.iterations) > 0:
+            self._restart_from_checkpoint(self._checkpoint_series.iterations[-1])
+        else:
+            if self._comm.rank == 0:
+                print("No restart", flush=True)
+            self._volume = np.zeros(shape, dtype=np.float64)
 
-        def iteration_loop(iteration: io.Iteration, iteration_idx: int):
+        def iteration_loop(iteration_l: io.Iteration, iteration_idx_l: int):
+            # Check if we have been here already (can happen with checkpointing)
+            if iteration_idx <= self._last_processed_iteration:
+                return
             # Find slices needed from this iteration
-            where_min = np.where(self._it_min == iteration_idx)
-            where_max = np.where(self._it_max == iteration_idx)
+            where_min = np.where(self._it_min == iteration_idx_l)
+            where_max = np.where(self._it_max == iteration_idx_l)
             if where_min[0].size == 0 and where_max[0].size == 0:
                 return
-            iteration.open()
+            iteration_l.open()
             # indices of beam slices that are in the integration volume at this time step
             beam_index_arr = np.concatenate((where_min[0], where_max[0]))
             # density slices positions along the propagation direction
@@ -620,7 +653,7 @@ class SAXSPropagator:
             prop_max = np.max(prop_axis_pos_arr)
 
             mrc_list: list[io.Mesh_Record_Component] = [
-                iteration.meshes[field][io.Mesh_Record_Component.SCALAR]
+                iteration_l.meshes[field][io.Mesh_Record_Component.SCALAR]
                 for field in self.density_fields
             ]
 
@@ -633,7 +666,7 @@ class SAXSPropagator:
             offset[self.prop_axis] = start
             extent[self.prop_axis] = stop - start
 
-            tmp_sum = self._load_data(iteration, mrc_list, offset, extent)
+            tmp_sum = self._load_data(iteration_l, mrc_list, offset, extent)
             _process_loaded_iteration_data(
                 tmp_sum,
                 self._volume,
@@ -643,14 +676,20 @@ class SAXSPropagator:
                 prop_min,
             )
             if dump_every_step:
-                self.write_to_openpmd(**openpmd_kwargs, finalize=False, iteration_idx=iteration_idx)
+                self.write_to_openpmd(**openpmd_kwargs, finalize=False, iteration_idx=iteration_idx_l)
+            self._last_processed_iteration = iteration_idx_l
             pbar.update(1)
 
         def _tqdm():
+            if self._restarted_from_iteration is None:
+                initial = 0
+            else:
+                initial = np.searchsorted(self._used_iterations, self._restarted_from_iteration, side='right')
             return tqdm(
                 position=self._comm.rank,
                 desc=f"MPI rank {self._comm.rank}: ",
                 disable=disable_progress,
+                initial=initial,
                 **tqdm_kwargs,
                 total=len(self._used_iterations),
             )
@@ -664,8 +703,12 @@ class SAXSPropagator:
                 for iteration_idx in self._used_iterations:
                     iteration = self._series.iterations[iteration_idx]
                     iteration_loop(iteration, iteration_idx)
-
-
+        # Finished processing iterations
+        finished = self._last_processed_iteration >= self._last_iteration_to_process
+        if not finished and self._checkpoint_series is not None:
+            self._write_checkpoint()
+            self._checkpoint_series.close()
+        return finished
 
 def to_intensity(
     field: Union[DescribedField, ArrayLike],
