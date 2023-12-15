@@ -157,18 +157,33 @@ class SAXSPropagator:
         self._volume = None
         self._checkpoint_series = None
         self._last_iteration_to_process = None
-        self._last_processed_iteration = None
+        self._last_processed_iteration = -1
         self._restarted_from_iteration = None
 
+        if HAVE_MPI:
+            self._comm: CommType = MPI.COMM_WORLD
+        else:
+            self._comm: CommType = FallbackMPICommunicator()
+
         if checkpoint_series_path is not None:
-            if HAVE_MPI:
-                self._checkpoint_series = io.Series(checkpoint_series_path,
-                                                    io.Access_Type.read_write,
-                                                    self._comm, checkpoint_options)
-            else:
-                self._checkpoint_series = io.Series(checkpoint_series_path,
-                                                    io.Access_Type.read_write,
-                                                    checkpoint_options)
+            try:
+                if HAVE_MPI:
+                    self._checkpoint_series = io.Series(checkpoint_series_path,
+                                                        io.Access_Type.read_write,
+                                                        self._comm, checkpoint_options)
+                else:
+                    self._checkpoint_series = io.Series(checkpoint_series_path,
+                                                        io.Access_Type.read_write,
+                                                        checkpoint_options)
+            except:
+                if HAVE_MPI:
+                    self._checkpoint_series = io.Series(checkpoint_series_path,
+                                                        io.Access_Type.create,
+                                                        self._comm, checkpoint_options)
+                else:
+                    self._checkpoint_series = io.Series(checkpoint_series_path,
+                                                        io.Access_Type.create,
+                                                        checkpoint_options)
             assert self._checkpoint_series.iteration_encoding == io.Iteration_Encoding.file_based, "Checkpointing supports only file-based iteration encoding."
 
         self.linear_read = linear_read
@@ -178,10 +193,6 @@ class SAXSPropagator:
             assert last_avail_iteration is not None
         else:
             access_mode = io.Access_Type.read_only
-        if HAVE_MPI:
-            self._comm: CommType = MPI.COMM_WORLD
-        else:
-            self._comm: CommType = FallbackMPICommunicator()
 
         if HAVE_MPI:
             self._series = io.Series(str(series_path), access_mode, self._comm, read_options)
@@ -470,7 +481,7 @@ class SAXSPropagator:
         t_0 = self.t_0.to("fs")
         t_start = (self.simulation_step_duration * self._used_iterations[0]).to("fs") - t_0
         it.set_time(t_start.magnitude)
-        it.set_dt(self.simulation_step_duration.to('fs') * iteration_idx)
+        it.set_dt(self.simulation_step_duration.to('fs').magnitude * iteration_idx)
         it.set_time_unit_SI(1.0e-15)
         it.set_attribute("t_0", t_0.magnitude)
 
@@ -607,7 +618,7 @@ class SAXSPropagator:
         if self._comm.rank == 0:
             print(f"Finished writing checkpoint {self._last_processed_iteration}", flush=True)
 
-    def __call__(self, disable_progress=None, tqdm_kwargs=None, dump_every_step=True, openpmd_kwargs=None,
+    def __call__(self, disable_progress=None, tqdm_kwargs=None, dump_every_step=False, openpmd_kwargs=None,
                  restart_iteration=None, try_restart=False):
         if self.prop_axis == 0:
             _process_loaded_iteration_data = _process_loaded_iteration_data_0
@@ -619,7 +630,8 @@ class SAXSPropagator:
             raise NotImplementedError("This code only works with 3Dim data.")
         if tqdm_kwargs is None:
             tqdm_kwargs = {}
-
+        if openpmd_kwargs is None:
+            openpmd_kwargs = {}
         shape = deepcopy(self._chunk_extent)
         shape.pop(self.prop_axis)
         shape.insert(0, self._detection_duration_int_time)
@@ -635,7 +647,7 @@ class SAXSPropagator:
 
         def iteration_loop(iteration_l: io.Iteration, iteration_idx_l: int):
             # Check if we have been here already (can happen with checkpointing)
-            if iteration_idx <= self._last_processed_iteration:
+            if iteration_idx_l <= self._last_processed_iteration:
                 return
             # Find slices needed from this iteration
             where_min = np.where(self._it_min == iteration_idx_l)
@@ -698,6 +710,8 @@ class SAXSPropagator:
         if self.linear_read:
             with _tqdm() as pbar:
                 for iteration in self._series.read_iterations():
+                    if iteration.iteration_index > self._last_iteration_to_process:
+                        break
                     iteration_loop(iteration, iteration.iteration_index)
         else:
             with _tqdm() as pbar:
