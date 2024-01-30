@@ -213,7 +213,7 @@ class OpenPMDDataLoader:
         temp *= energy_density_meta.value_unit / density_meta.value_unit
         temp = temp.to(unit)
         if ret_meta:
-            field_description = f"mean kinetic energy of {species}"
+            field_description = f"Temperature (2/3 x mean kinetic energy) of {species}"
             value_symbol = r"$2/3\left<E_\mathrm{kin}\right>$"
             value_unit = unit
             temp_meta = energy_density_meta.get_modified(
