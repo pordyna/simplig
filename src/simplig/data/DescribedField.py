@@ -11,6 +11,10 @@ class DescribedField:
     data: Union[np.ndarray, None]
     meta: FieldMetaData
 
+    def __iter__(self):
+        for member in [self.data, self.meta]:
+            yield member
+
     @property
     def T(self):
         if self.meta.ndim > 1:
