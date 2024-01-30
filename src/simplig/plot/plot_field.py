@@ -9,6 +9,7 @@ from textwrap import wrap
 
 def _plot_2d_field(
     data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, colorbar=True, tight_layout=True,
+        min_max_sig_figs=4,
         **imshow_kwargs
 ):
     assert meta_data.ndim == 2
@@ -33,6 +34,7 @@ def _plot_2d_field(
         cax = ax.inset_axes([1.01, 0.0, 0.05, 1])
         f.colorbar(
             img, ax=ax, cax=cax, label=rf"{meta_data.value_symbol}" + rf"$\left[{data.units:~L}\right]$"
+            + f"    min={np.min(data).magnitude:.{min_max_sig_figs}g}, max={np.max(data).magnitude:.{min_max_sig_figs}g}"
         )
     ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit_x:~P}]")
     ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit_y:~P}]")
