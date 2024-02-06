@@ -119,7 +119,6 @@ def _process_loaded_iteration_data_2(
 
 
 class SAXSPropagator:
-
     def __init__(
         self,
         series_path,
@@ -187,6 +186,7 @@ class SAXSPropagator:
             assert self._checkpoint_series.iteration_encoding == io.Iteration_Encoding.file_based, "Checkpointing supports only file-based iteration encoding."
 
         self.linear_read = linear_read
+
         if linear_read:
             access_mode = io.Access_Type.read_linear
             assert first_avail_iteration is not None
@@ -529,7 +529,7 @@ class SAXSPropagator:
                 self.prop_start.to("m").magnitude,
                 self.prop_end.to("m").magnitude
                 + self._cell_sizes[self.prop_axis].to("m").magnitude,
-                ],
+            ],
         )
         mesh.set_attribute("propagationDomainUnitSI", 1.0)
         mesh.set_grid_global_offset(global_offset)
