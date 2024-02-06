@@ -9,8 +9,7 @@ from textwrap import wrap
 
 def _plot_2d_field(
     data, meta_data, ax=None, log_scale=False, unit=None, title_fontsize=12, colorbar=True, tight_layout=True,
-        min_max_sig_figs=4,
-        **imshow_kwargs
+        vmin=None, vmax=None, min_max_sig_figs=4, **imshow_kwargs
 ):
     assert meta_data.ndim == 2
     if ax is None:
@@ -20,9 +19,11 @@ def _plot_2d_field(
     norm = None
     if log_scale:
         if np.any(data < 0):
-            norm = SymLogNorm(1.0)
+            norm = SymLogNorm(1.0, vmin=vmin, vmax=vmax)
         else:
-            norm = LogNorm()
+            norm = LogNorm(vmin=vmin, vmax=vmax)
+    else:
+        imshow_kwargs = imshow_kwargs | dict(vmax=vmax, vmin=vmin)
     kwargs = {"norm": norm, "interpolation": "none"}
     kwargs.update(imshow_kwargs)
     data *= meta_data.value_unit
@@ -63,7 +64,11 @@ def _plot_1d_field(
     if ax is None:
         _, ax = plt.subplots(1)
     if log_scale:
-        ax.set_yscale("log")
+        if np.any(data < 0):
+            ax.set_yscale("symlog")
+        else:
+            ax.set_yscale("log")
+
     x = meta_data.get_positions(0)
     if unit is not None:
         data = ((data * meta_data.value_unit).to(unit)).magnitude
