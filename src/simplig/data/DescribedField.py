@@ -56,6 +56,12 @@ class DescribedField:
         start += local_start * self.meta.cell_size[axis]
         return start
 
+    def shift_time(self, t_0):
+        time = self.meta.time
+        t_0 = t_0.to(time.units)
+        time -= t_0
+        self.meta = self.meta.get_modified(time=time)
+
     def __getitem__(self, slicing):
         # verify correct and supported slicing
         if slicing is not None:
