@@ -135,6 +135,7 @@ class SAXSPropagator:
         checkpoint_series_path=None,
         checkpoint_options="{}",
         checkpoint_interval=None,
+        force_mpi=False,
     ):
         self.prop_axis_str = None
         self.chunking_axis = None
@@ -162,28 +163,37 @@ class SAXSPropagator:
         if HAVE_MPI:
             self._comm: CommType = MPI.COMM_WORLD
         else:
+            assert not force_mpi, "not mpi support, but explicitly requested!"
             self._comm: CommType = FallbackMPICommunicator()
 
         if checkpoint_series_path is not None:
             try:
                 if HAVE_MPI:
-                    self._checkpoint_series = io.Series(checkpoint_series_path,
-                                                        io.Access_Type.read_write,
-                                                        self._comm, checkpoint_options)
+                    self._checkpoint_series = io.Series(
+                        checkpoint_series_path,
+                        io.Access_Type.read_write,
+                        self._comm,
+                        checkpoint_options,
+                    )
                 else:
-                    self._checkpoint_series = io.Series(checkpoint_series_path,
-                                                        io.Access_Type.read_write,
-                                                        checkpoint_options)
+                    self._checkpoint_series = io.Series(
+                        checkpoint_series_path, io.Access_Type.read_write, checkpoint_options
+                    )
             except:
                 if HAVE_MPI:
-                    self._checkpoint_series = io.Series(checkpoint_series_path,
-                                                        io.Access_Type.create,
-                                                        self._comm, checkpoint_options)
+                    self._checkpoint_series = io.Series(
+                        checkpoint_series_path,
+                        io.Access_Type.create,
+                        self._comm,
+                        checkpoint_options,
+                    )
                 else:
-                    self._checkpoint_series = io.Series(checkpoint_series_path,
-                                                        io.Access_Type.create,
-                                                        checkpoint_options)
-            assert self._checkpoint_series.iteration_encoding == io.Iteration_Encoding.file_based, "Checkpointing supports only file-based iteration encoding."
+                    self._checkpoint_series = io.Series(
+                        checkpoint_series_path, io.Access_Type.create, checkpoint_options
+                    )
+            assert (
+                self._checkpoint_series.iteration_encoding == io.Iteration_Encoding.file_based
+            ), "Checkpointing supports only file-based iteration encoding."
 
         self.linear_read = linear_read
 
@@ -225,18 +235,18 @@ class SAXSPropagator:
         for field in density_fields[1:]:
             mr: io.Mesh = first_iteration.meshes[field]
             mrc: io.Mesh_Record_Component = mr[io.Mesh_Record_Component.SCALAR]
-            assert np.isclose(
+            assert np.allclose(
                 np.array(mr.grid_spacing) * mr.grid_unit_SI,
                 np.array(example_mr.grid_spacing) * example_mr.grid_unit_SI,
             )
             assert mr.axis_labels == example_mr.axis_labels
             assert mrc.shape == example_mrc.shape
-            assert np.isclose(
+            assert np.allclose(
                 np.array(example_mr.grid_global_offset) * example_mr.grid_unit_SI,
                 np.array(mr.grid_global_offset) * mr.grid_unit_SI,
             )
-            assert np.isclose(example_mrc.position, mrc.position)
-            assert np.isclose(example_mrc.unit_SI, mrc.unit_SI)
+            assert np.allclose(example_mrc.position, mrc.position)
+            assert np.allclose(example_mrc.unit_SI, mrc.unit_SI)
             assert example_mrc.dtype is mrc.dtype
 
         self._in_unit_SI = example_mrc.unit_SI
@@ -414,6 +424,7 @@ class SAXSPropagator:
             assert self._used_iterations[0] >= self._first_avail_iteration
             assert self._used_iterations[-1] <= self._last_avail_iteration
         self._last_iteration_to_process = self._used_iterations[-1]
+
     def gather_results(self):
         size = self._comm.size
         if size == 1:
@@ -465,7 +476,9 @@ class SAXSPropagator:
                 str(out_series_path), io.Access_Type.create, self._comm, options=options
             )
         else:
-            self.output_series = io.Series(str(out_series_path), io.Access_Type.create, options=options)
+            self.output_series = io.Series(
+                str(out_series_path), io.Access_Type.create, options=options
+            )
         self.output_series.set_software("simplig")
 
     def close_output_series(self):
@@ -481,7 +494,7 @@ class SAXSPropagator:
         t_0 = self.t_0.to("fs")
         t_start = (self.simulation_step_duration * self._used_iterations[0]).to("fs") - t_0
         it.set_time(t_start.magnitude)
-        it.set_dt(self.simulation_step_duration.to('fs').magnitude * iteration_idx)
+        it.set_dt(self.simulation_step_duration.to("fs").magnitude * iteration_idx)
         it.set_time_unit_SI(1.0e-15)
         it.set_attribute("t_0", t_0.magnitude)
 
@@ -618,8 +631,15 @@ class SAXSPropagator:
         if self._comm.rank == 0:
             print(f"Finished writing checkpoint {self._last_processed_iteration}", flush=True)
 
-    def __call__(self, disable_progress=None, tqdm_kwargs=None, dump_every_step=False, openpmd_kwargs=None,
-                 restart_iteration=None, try_restart=False):
+    def __call__(
+        self,
+        disable_progress=None,
+        tqdm_kwargs=None,
+        dump_every_step=False,
+        openpmd_kwargs=None,
+        restart_iteration=None,
+        try_restart=False,
+    ):
         if self.prop_axis == 0:
             _process_loaded_iteration_data = _process_loaded_iteration_data_0
         elif self.prop_axis == 1:
@@ -689,7 +709,9 @@ class SAXSPropagator:
                 prop_min,
             )
             if dump_every_step:
-                self.write_to_openpmd(**openpmd_kwargs, finalize=False, iteration_idx=iteration_idx_l)
+                self.write_to_openpmd(
+                    **openpmd_kwargs, finalize=False, iteration_idx=iteration_idx_l
+                )
             self._last_processed_iteration = iteration_idx_l
             pbar.update(1)
 
@@ -697,7 +719,9 @@ class SAXSPropagator:
             if self._restarted_from_iteration is None:
                 initial = 0
             else:
-                initial = np.searchsorted(self._used_iterations, self._restarted_from_iteration, side='right')
+                initial = np.searchsorted(
+                    self._used_iterations, self._restarted_from_iteration, side="right"
+                )
             return tqdm(
                 position=self._comm.rank,
                 desc=f"MPI rank {self._comm.rank}: ",
@@ -725,6 +749,7 @@ class SAXSPropagator:
             self._checkpoint_series.close()
         return finished
 
+
 def to_intensity(
     field: Union[DescribedField, ArrayLike],
     photons_in_pulse: int,
@@ -738,23 +763,22 @@ def to_intensity(
 
     volume = volume * np.sqrt(pulse_profile[None, ...])
     if dask_fft:
-        volume = da.from_array(volume, chunks={0 : 'auto', 1: -1,  2: -1})
+        volume = da.from_array(volume, chunks={0: "auto", 1: -1, 2: -1})
         intensity = da.abs((da.fft.fft2(volume))) ** 2
         intensity = intensity.compute()
     else:
         intensity = np.abs(np.fft.fft2(volume)) ** 2
     intensity = np.fft.fftshift(intensity, axes=(-1, -2))
     cell_size = list(volume_metadata.cell_size)
-    intensity *= (cell_size[1] * cell_size[2]).to(1/volume_metadata.value_unit)
-
+    intensity *= (cell_size[1] * cell_size[2]).to(1 / volume_metadata.value_unit)
 
     axis_labels = list(volume_metadata.axis_labels)
-    axis_labels[0] = 't'
+    axis_labels[0] = "t"
     for i, label in enumerate(axis_labels[1:]):
         axis_labels[i + 1] = "q_" + label
     intensity *= pulse_shape[:, None, None]
 
-    cell_size[0] = (cell_size[0] / (cs.c * ureg.meter/ureg.second)).to('fs')
+    cell_size[0] = (cell_size[0] / (cs.c * ureg.meter / ureg.second)).to("fs")
     intensity *= photons_in_pulse
     intensity *= wavelength**2
     intensity *= cs.physical_constants["classical electron radius"][0] ** 2
@@ -762,11 +786,11 @@ def to_intensity(
 
     ndim = volume_metadata.ndim
     axis_labels = list(volume_metadata.axis_labels)
-    axis_labels[0] = 't'
+    axis_labels[0] = "t"
     for i, label in enumerate(axis_labels[1:]):
         axis_labels[i + 1] = "q_" + label
     first_cell_positions = list(volume_metadata.first_cell_positions)
-    first_cell_positions[0] = (first_cell_positions[0] / (cs.c * ureg.meter/ureg.second)).to('fs')
+    first_cell_positions[0] = (first_cell_positions[0] / (cs.c * ureg.meter / ureg.second)).to("fs")
     q1 = np.fft.fftshift(
         np.fft.fftfreq(volume.shape[1], d=volume_metadata.cell_size[1].magnitude / (2 * np.pi))
     )

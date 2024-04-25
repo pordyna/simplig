@@ -144,7 +144,7 @@ class OpenPMDDataLoader:
             component_str = component
             if component == io.Mesh_Record_Component.SCALAR:
                 component_str = ""
-            time = (iteration * it.dt + mr.time_offset) * it.time_unit_SI
+            time = (it.time + mr.time_offset) * it.time_unit_SI
 
             meta_data = FieldMetaData(
                 ndim=data.ndim,
