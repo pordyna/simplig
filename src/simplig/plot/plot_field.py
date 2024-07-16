@@ -73,6 +73,7 @@ def _plot_2d_field(
     extent, (extent_unit_y, extent_unit_x) = meta_data.get_imshow_extent()
 
     img = ax.imshow(data.magnitude, extent=extent, origin="lower", **kwargs)
+    cax = None
     if colorbar:
         cax = ax.inset_axes([1.01, 0.0, 0.05, 1])
         f.colorbar(
@@ -93,7 +94,7 @@ def _plot_2d_field(
     if tight_layout:
         plt.tight_layout()
 
-    return img
+    return dict(ax=ax, img=img, cax=cax)
 
 
 def wrap_text(text, length):
@@ -138,7 +139,7 @@ def _plot_1d_field(
     if tight_layout:
         plt.tight_layout()
 
-    return plot
+    return dict(ax=ax, plot=plot)
 
 
 def plot_field(field, ax=None, log_scale=False, unit=None, **plot_func_kwargs):
