@@ -910,34 +910,6 @@ test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=7.4.3)", "pytest-
 type = ["mypy (>=1.8)"]
 
 [[package]]
-name = "pybind11"
-version = "2.13.1"
-description = "Seamless operability between C++11 and Python"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "pybind11-2.13.1-py3-none-any.whl", hash = "sha256:97881536abe0cd4260a9ccc5bf6d1cf3113318f08af1feb82d4b9f95e93f0aa4"},
-    {file = "pybind11-2.13.1.tar.gz", hash = "sha256:65be498b1cac516161add1508e65375674916bebf2570d057dc9c3c7bcbbc7b0"},
-]
-
-[package.dependencies]
-pybind11-global = {version = "2.13.1", optional = true, markers = "extra == \"global\""}
-
-[package.extras]
-global = ["pybind11-global (==2.13.1)"]
-
-[[package]]
-name = "pybind11-global"
-version = "2.13.1"
-description = "Seamless operability between C++11 and Python"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "pybind11_global-2.13.1-py3-none-any.whl", hash = "sha256:35002b4f26048be6a440d8a10fc48941151bddf1f29826b429ef00bab2fd477e"},
-    {file = "pybind11_global-2.13.1.tar.gz", hash = "sha256:9a56a61c7b4c894a1e5c6bdf93ea3e06b5b55d226dc8d75113f21f37eabdfbc9"},
-]
-
-[[package]]
 name = "pycodestyle"
 version = "2.12.0"
 description = "Python style guide checker"
@@ -1099,4 +1071,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "57777f52a2dfb98c30121dc6b713d717e4021b7ed3a3fea4159bcd7309aadceb"
+content-hash = "53ecba46862858dc90f63e0e2675c4efd0420c655b62f58eecf7b6882d6a84ba"

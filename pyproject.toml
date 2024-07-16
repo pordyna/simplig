@@ -29,7 +29,6 @@ numpy = ">=1.26"
 matplotlib = "^3.9.1"
 scipy = "^1.14.0"
 openpmd-api = "^0.15.2"
-pybind11 = {extras = ["global"], version = "^2.13.1"}
 affine-transform = "^0.3.2"
 [tool.poetry.group.dev.dependencies]
 black = "^24.4.2"
