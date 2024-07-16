@@ -4,7 +4,7 @@
 name = "affine-transform"
 version = "0.3.2"
 description = "Easy to use multi-core affine transformations"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "affine_transform-0.3.2.tar.gz", hash = "sha256:b9160f0a5db118332a1483c6b93ddff2944ec1a6e2fef5f15316320c74b6bdea"},
@@ -585,7 +585,7 @@ files = [
 name = "mgen"
 version = "1.2.1"
 description = "Package to generate rotation matrices"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "mgen-1.2.1-py3-none-any.whl", hash = "sha256:3aff2ae91c2317b94fd9ea3993078f20593414fce80e56d68497b039d9555823"},
@@ -760,7 +760,7 @@ files = [
 name = "pbr"
 version = "6.0.0"
 description = "Python Build Reasonableness"
-optional = false
+optional = true
 python-versions = ">=2.6"
 files = [
     {file = "pbr-6.0.0-py2.py3-none-any.whl", hash = "sha256:4a7317d5e3b17a3dccb6a8cfe67dab65b20551404c52c8ed41279fa4f0cb4cda"},
@@ -1005,7 +1005,7 @@ test = ["Cython", "array-api-strict", "asv", "gmpy2", "hypothesis (>=6.30)", "me
 name = "setuptools"
 version = "70.3.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "setuptools-70.3.0-py3-none-any.whl", hash = "sha256:fe384da74336c398e0d956d1cae0669bc02eed936cdb1d49b57de1990dc11ffc"},
@@ -1020,7 +1020,7 @@ test = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "importlib-metadata
 name = "setuptools-scm"
 version = "8.1.0"
 description = "the blessed package to manage your versions by scm tags"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "setuptools_scm-8.1.0-py3-none-any.whl", hash = "sha256:897a3226a6fd4a6eb2f068745e49733261a21f70b1bb28fce0339feb978d9af3"},
@@ -1071,4 +1071,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "53ecba46862858dc90f63e0e2675c4efd0420c655b62f58eecf7b6882d6a84ba"
+content-hash = "4bb7dd2082f84fc79fbc8d5d77bca08b3fa8ba75cc1579a58d46ebf7a73c9c04"
