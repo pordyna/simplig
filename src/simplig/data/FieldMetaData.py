@@ -1,7 +1,7 @@
 import numpy as np
 from dataclasses import dataclass, asdict
 from typing import Sequence
-from typing import Mapping, Optional, AnyStr, Tuple, Union
+from typing import Mapping, AnyStr, Tuple, Union
 
 from .. import ureg
 
@@ -46,10 +46,6 @@ class FieldMetaData:
                 f", in_cell_position: len is {len(self.in_cell_position)}"
                 f" have to have length equal ndim = {self.ndim}"
             )
-
-
-
-
 
     def get_modified(self, **kwargs):
         dict_repr = asdict(self)
@@ -107,8 +103,12 @@ class FieldMetaData:
             extent[2] = extent[2].to(units[0])
             extent[3] = extent[3].to(units[0])
         else:
-            unit_0 = np.max(np.abs(ureg.Quantity.from_list([extent[2], extent[3]]))).to_compact().units
-            unit_1 = np.max(np.abs(ureg.Quantity.from_list([extent[0], extent[1]]))).to_compact().units
+            unit_0 = (
+                np.max(np.abs(ureg.Quantity.from_list([extent[2], extent[3]]))).to_compact().units
+            )
+            unit_1 = (
+                np.max(np.abs(ureg.Quantity.from_list([extent[0], extent[1]]))).to_compact().units
+            )
             extent[0] = extent[0].to(unit_1)
             extent[1] = extent[1].to(unit_1)
             extent[2] = extent[2].to(unit_0)

@@ -2,8 +2,6 @@ from dataclasses import dataclass
 import numpy as np
 from .FieldMetaData import FieldMetaData
 from typing import Union
-from copy import copy, deepcopy
-from .. import ureg
 
 
 @dataclass
@@ -86,7 +84,7 @@ class DescribedField:
         first_cell_positions = [
             self._get_first_cell_position(axis, slicing) for axis in range(self.meta.ndim)
         ]
-        #first_cell_positions = ureg.Quantity.from_list(first_cell_positions)
+
         def _delete(sequence, idxs):
             try:
                 sequence = np.delete(sequence, idxs)

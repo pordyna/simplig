@@ -5,6 +5,10 @@
 
 **Sim**ulation **Pl**asma F**ig**ures 
 
-An easy (**simple**) way of plotting simulation mesh data from openPMD outputs.
+A **simple** way of plotting simulation mesh data from openPMD outputs.
 
-WIP
+* Load openPMD mesh data and visualize them.
+* Perform basic operations on loaded data such as slicing, rotation, or axes transposition while correctly handling metadata.
+
+Currently, using `pint` for units and own data structure. 
+In the feature it will probably switch to `scipp` instead.

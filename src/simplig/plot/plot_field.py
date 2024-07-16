@@ -82,12 +82,11 @@ def _plot_2d_field(
             cax=cax,
             label=rf"{meta_data.value_symbol}"
             + rf"$\left[{data.units:~L}\right]$"
-            + f"    min={np.min(data).magnitude:.{min_max_sig_figs}g}, max={np.max(data).magnitude:.{min_max_sig_figs}g}",
+            + f" min={np.min(data).magnitude:.{min_max_sig_figs}g},"
+            + f" max={np.max(data).magnitude:.{min_max_sig_figs}g}",
         )
     ax.set_xlabel(meta_data.axis_labels[1] + f" [{extent_unit_x:~P}]")
     ax.set_ylabel(meta_data.axis_labels[0] + f" [{extent_unit_y:~P}]")
-    title_len = int(round(ax.bbox.width / 500 * 12 / title_fontsize * 60))
-    # ax.set_title(wrap_text(meta_data.plot_title, title_len), fontsize=title_fontsize)
     if not disable_title:
         ax.set_title(meta_data.plot_title, fontsize=title_fontsize, wrap=True)
 
