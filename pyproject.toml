@@ -1,6 +1,6 @@
 [project]
 name = "simplig"
-version = "0.0.1"
+version = "0.1.0"
 description = ""
 authors = [{name = "Paweł Ordyna", email = "p.ordyna@hzdr.de"}]
 readme = "README.md"
