@@ -1,0 +1,40 @@
+[project]
+name = "simplig"
+version = "0.1.0"
+description = ""
+authors = [{name = "Paweł Ordyna", email = "p.ordyna@hzdr.de"}]
+readme = "README.md"
+
+[tool.black]
+line-length = 100
+
+[tool.docformatter]
+recursive = true
+pre-summary-space = true
+wrap-summaries = 100
+wrap-descriptions = 100
+
+[tool.poetry]
+name = "simplig"
+version = "0.0.1"
+description = "Load and visualize openpmd mesh data"
+authors = ["Paweł Ordyna <p.ordyna@hzdr.de>"]
+license = "GNU 3.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pint = "^0.24.3"
+numpy = ">=1.26"
+matplotlib = "^3.9.1"
+scipy = "^1.14.0"
+openpmd-api = "^0.15.2"
+affine-transform = "^0.3.2"
+[tool.poetry.group.dev.dependencies]
+black = "^24.4.2"
+docformatter = "^1.7.5"
+flake8 = "^7.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
